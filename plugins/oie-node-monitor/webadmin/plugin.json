@@ -1,0 +1,10 @@
+{
+    "id": "nodemonitor",
+    "name": "Node Monitor",
+    "version": "0.1.0",
+    "author": "This repository",
+    "description": "Every engine at once: online or offline, CPU, heap, disk, threads, channels and message volume.",
+    "enabled": true,
+    "oie": { "apiMin": "4.6" },
+    "client": { "entry": "web/plugin.js" }
+}

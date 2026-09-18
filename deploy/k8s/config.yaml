@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oie-config
+  labels:
+    app.kubernetes.io/name: oie
+data:
+  # Everything every engine in the cluster must agree on. What differs per pod
+  # -- role, disabled extensions, server id -- is set in the StatefulSets, not
+  # here, precisely so that this file cannot make two nodes disagree.
+
+  DATABASE: postgres
+  DATABASE_URL: jdbc:postgresql://oie-db:5432/mirthdb
+  DATABASE_USERNAME: mirthdb
+  # Two pools per engine, of this size each. Budget
+  # 2 x DATABASE_MAX_CONNECTIONS x (workers + 1) against the server's
+  # max_connections before anything else connects at all.
+  DATABASE_MAX_CONNECTIONS: "20"
+  DATABASE_READONLY_MAX_CONNECTIONS: "20"
+  DATABASE_MAX_RETRY: "10"
+  DATABASE_RETRY_WAIT: "5000"
+
+  # The shared keystore, mounted from the oie-keystore Secret. The entrypoint
+  # copies it into appdata at boot -- the engine writes to its keystore, so it
+  # cannot be mounted read-only in place.
+  #
+  # This is the one piece of state a second engine cannot do without: the
+  # keystore holds the secret key the Encryptor uses, and an engine that
+  # generates its own cannot read what another one encrypted.
+  KEYSTORE_SOURCE: /run/oie-secrets/keystore.jks
+
+  # Sessions in PostgreSQL (Jetty's JDBCSessionDataStore over the engine's own
+  # datasource), and no in-memory session cache in front of them. Together these
+  # are what let the admin Service round-robin without session affinity.
+  SESSION_STORE: "true"
+  _MP_SERVER_API_SESSIONCACHE: none
+
+  # The configuration map from the database rather than from each pod's own
+  # appdata/configuration.properties, which would otherwise be per-container
+  # state that no two pods share.
+  _MP_CONFIGURATIONMAP_LOCATION: database
+
+  # The cluster extension deploys what the cluster intends. The engine's own
+  # startup deploy would first deploy every enabled channel -- including ones
+  # deliberately undeployed -- and have to be corrected a few seconds later.
+  SERVER_STARTUP_DEPLOY: "false"
+
+  OIE_CLUSTER_ENABLED: "true"
+  OIE_CLUSTER_NAME: prod
+
+  # server.id style for pods that have not started yet.
+  #
+  # `name` makes the id the pod's name instead of a UUID, which is what the
+  # message browser's "Server Id" column prints -- so every message, and every
+  # destination, says which pod handled it in words rather than in hex. The
+  # entrypoint never replaces an id a pod already has, so switching this only
+  # affects pods created afterwards.
+  #
+  # `uuid` (the default) folds OIE_CLUSTER_NAME into the hash, which is what you
+  # want if two clusters ever share one database. Names would have to be unique
+  # across both.
+  OIE_SERVER_ID_STYLE: uuid
+
+  # The plaintext admin listener stays off; the REST API is HTTPS-only anyway.
+  HTTP_PORT: "0"
+
+  # Same as compose: let the console frame the TLS Manager app, and nobody else.
+  _MP_SERVER_API_XFRAMEOPTIONS: SAMEORIGIN
+  _MP_SERVER_API_CONTENTSECURITYPOLICY: "frame-ancestors 'self'"
+
+  OIE_HEAP_MAX: 1g
+  TZ: UTC
+
+  # Pin every extension by checksum. These archives are loaded into the engine's
+  # JVM, so an artifact that changes under you is code execution inside it --
+  # and in a cluster it is code execution on every node at once.
+  OIE_EXTENSION_URLS: ""
+---
+# The secrets this stack needs, as a template. Do not commit real values; create
+# them with kubectl, or point an external secrets operator at these names.
+#
+#   kubectl create secret generic oie-keystore \
+#       --from-file=keystore.jks=secrets/keystore.jks
+#
+#   kubectl create secret generic oie-secrets \
+#       --from-literal=POSTGRES_PASSWORD=... \
+#       --from-literal=OIE_ADMIN_PASSWORD=... \
+#       --from-literal=KEYSTORE_PASSWORD=...
+#
+# KEYSTORE_PASSWORD must be the one the keystore was created with and must be
+# the same on every node. Changing it after the first boot makes the existing
+# keystore unreadable, which means losing anything encrypted with that key.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: oie-secrets
+  labels:
+    app.kubernetes.io/name: oie
+  annotations:
+    oie.local/note: "placeholder -- replace with real values before applying"
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: "change-me"
+  OIE_ADMIN_PASSWORD: "change-me"
+  KEYSTORE_PASSWORD: "change-me"

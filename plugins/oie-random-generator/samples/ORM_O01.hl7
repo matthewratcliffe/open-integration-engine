@@ -1,0 +1,6 @@
+MSH|^~\&|${message.sendingApplication}|${message.sendingFacility}|${message.receivingApplication}|${message.receivingFacility}|${message.datetime}||${message.type}^${message.event}^${message.structure}|${message.controlId}|${message.processingId}|${message.version}|||AL|NE|AU|UNICODE UTF-8
+PID|1||${patient.mrn}^^^${message.sendingFacility}^MR~${patient.medicare}^^^AUSHIC^MC||${patient.family}^${patient.given}^${patient.middle}^^${patient.prefix}||${patient.dob}|${patient.sex}|||${patient.street}^^${patient.suburb}^${patient.state}^${patient.postcode}^AUS^H||${patient.phone}^PRN^PH~${patient.mobile}^PRN^CP|||${patient.maritalStatus}||${patient.accountNumber}
+PV1|1|${visit.class}|${visit.location}|${visit.admitType}|||${visit.attending.xcn}|${visit.referring.xcn}||${visit.hospitalService}|||||||${visit.attending.xcn}||${visit.number}|${visit.financialClass}||||||||||||||||||||||||${visit.admitTime}
+ORC|NW|${random.digits:8}^${message.sendingApplication}|||SC||||${message.datetime}|||${visit.attending.xcn}
+OBR|1|${random.digits:8}^${message.sendingApplication}||${random.pick:FBC^Full Blood Count,UEC^Urea Electrolytes and Creatinine,LFT^Liver Function Tests,CRP^C-Reactive Protein}^L||${message.datetime}||||||||||${visit.attending.xcn}||||||||${random.pick:CH,HM,MB,RAD}|||^^^${message.datetime}^^R
+NTE|1|L|Specimen collected on the ward.

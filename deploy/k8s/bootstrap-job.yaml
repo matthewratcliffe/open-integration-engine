@@ -1,0 +1,61 @@
+# Rotates the admin account off the password 4.6.0 ships with.
+#
+# The same one-shot as the `bootstrap` service in compose.yaml, and for the same
+# reason: OIE 4.6.0 seeds admin/admin and ignores server.initialadminpassword,
+# which landed on main after the release. Leaving that in place would mean every
+# cluster stands up a reachable API on well-known credentials.
+#
+# Idempotent: on a second run it confirms the password and exits 0, so it is
+# safe to leave in a GitOps apply that runs on every change.
+#
+# The scripts come from a ConfigMap rather than the image, which does not carry
+# them. Create it from the repository:
+#
+#   kubectl create configmap oie-scripts \
+#       --from-file=scripts/oie-api.sh \
+#       --from-file=scripts/oie-bootstrap-admin.sh
+#
+# It is run against one node by name rather than through the Service. The
+# password lives in the shared database, so any node would do -- but a retry
+# landing on a different engine mid-rotation reads a confusing error, and naming
+# the node makes the log say which engine answered.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: oie-bootstrap
+  labels:
+    app.kubernetes.io/name: oie
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oie
+        app.kubernetes.io/component: bootstrap
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          image: oie/engine:4.6.0
+          command: ["/bin/bash", "/opt/oie/scripts/oie-bootstrap-admin.sh"]
+          env:
+            - name: OIE_URL
+              value: https://oie-utility-0.oie-utility:8443/api
+            # The engine presents the keystore's self-signed certificate and
+            # this hop does not leave the cluster network.
+            - name: OIE_INSECURE
+              value: "true"
+            - name: OIE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: oie-secrets
+                  key: OIE_ADMIN_PASSWORD
+          volumeMounts:
+            - name: scripts
+              mountPath: /opt/oie/scripts
+              readOnly: true
+      volumes:
+        - name: scripts
+          configMap:
+            name: oie-scripts
+            defaultMode: 0555

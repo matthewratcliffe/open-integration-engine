@@ -1,0 +1,10 @@
+{
+    "id": "connector-fhir",
+    "name": "FHIR Connector",
+    "version": "0.1.0",
+    "author": "This repository",
+    "description": "FHIR Listener (source) and FHIR Sender (destination) connector panels for the channel editor, covering FHIR R4 and R5.",
+    "enabled": true,
+    "oie": { "apiMin": "4.6" },
+    "client": { "entry": "web/plugin.js" }
+}

@@ -1,0 +1,10 @@
+{
+    "id": "sso-user-guard",
+    "name": "SSO User Guard",
+    "version": "0.1.0",
+    "author": "This repository",
+    "description": "Makes the Edit User dialog read-only for accounts bound to the identity provider, since the OIDC extension rewrites their details from the token's claims on every sign-in. Recognised by the oidc.subject user preference; no surface of its own.",
+    "enabled": true,
+    "oie": { "apiMin": "4.6" },
+    "client": { "entry": "web/plugin.js" }
+}

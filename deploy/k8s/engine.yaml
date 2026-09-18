@@ -1,0 +1,299 @@
+# The engines: N workers and one utility node, from one image.
+#
+# StatefulSets rather than Deployments, for one reason: server.id. Donkey scopes
+# every queue by it -- a node's queued messages are recovered by the node that
+# owns them and by nothing else -- so an engine that comes back with a new id
+# abandons whatever it had queued. A StatefulSet gives each pod a stable name,
+# the entrypoint derives a stable server.id from it, and a rescheduled pod picks
+# its own queue back up.
+#
+# That is also why appdata can be an emptyDir. With the keystore coming from a
+# Secret, the configuration map from the database and the server id from the pod
+# name, nothing in appdata has to survive the pod; the extension download cache
+# repopulates itself.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oie-worker
+  labels:
+    app.kubernetes.io/name: oie
+    app.kubernetes.io/component: worker
+spec:
+  # Headless: this exists to give each pod stable DNS
+  # (oie-worker-0.oie-worker.<ns>.svc), for reaching one node on its own.
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: oie
+    app.kubernetes.io/component: worker
+  ports:
+    - name: api
+      port: 8443
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: oie-worker
+  labels:
+    app.kubernetes.io/name: oie
+    app.kubernetes.io/component: worker
+spec:
+  serviceName: oie-worker
+  replicas: 3
+  # OrderedReady is doing real work here: the first engine to reach an empty
+  # database creates the schema, and three of them migrating at once is a race
+  # with no upside. It also means a rolling update replaces one pod at a time.
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oie
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oie
+        app.kubernetes.io/component: worker
+    spec:
+      # A pod takes 60-90s to boot and converge, and it stops channels and
+      # drains in-flight messages on the way down. Kubernetes removes it from
+      # the Service endpoints before SIGTERM, so this window is about finishing
+      # work rather than about refusing new connections.
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: engine
+          image: oie/engine:4.6.0
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: oie-config
+            - secretRef:
+                name: oie-secrets
+          env:
+            - name: OIE_CLUSTER_ROLE
+              value: worker
+            # One image, two roles. Everything that does scheduled work from
+            # settings in the shared configuration table -- the engine's own
+            # data pruner, git sync, the volume monitor, Sentinel -- runs on the
+            # utility node only. Their settings are shared, so they cannot be
+            # told apart per node; the installation is what differs.
+            - name: OIE_DISABLE_EXTENSIONS
+              value: datapruner,gitsync,volumemonitor,sentinel
+            # HOSTNAME is the pod name, which is stable for a StatefulSet pod.
+            # The entrypoint hashes OIE_CLUSTER_NAME/<name> into a server.id, so
+            # oie-worker-1 is the same engine identity wherever it is scheduled.
+            - name: OIE_SERVER_ID_FROM
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OIE_CLUSTER_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: KEYSTORE_STOREPASS
+              valueFrom:
+                secretKeyRef:
+                  name: oie-secrets
+                  key: KEYSTORE_PASSWORD
+            - name: KEYSTORE_KEYPASS
+              valueFrom:
+                secretKeyRef:
+                  name: oie-secrets
+                  key: KEYSTORE_PASSWORD
+            - name: _MP_SERVER_INITIALADMINPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: oie-secrets
+                  key: OIE_ADMIN_PASSWORD
+            # OIE_CLUSTER_ADDRESS is deliberately unset. The console renders it
+            # as a link for the per-node tools, and an in-cluster DNS name is not
+            # something a browser can open. Set it only if you publish a real
+            # per-node address (an ingress path per pod).
+          ports:
+            - name: api
+              containerPort: 8443
+            # Channel listener ports. Add the ones your deployed channels bind;
+            # these two match the examples in compose.dev.yaml.
+            - name: channel-http
+              containerPort: 8081
+            - name: channel-mllp
+              containerPort: 6661
+          # /api/server/status answers without authentication -- it is what the
+          # image's own HEALTHCHECK uses -- but the API requires the
+          # X-Requested-With header (server.api.require-requested-with), so the
+          # probe has to send it or every check is a 400.
+          startupProbe: &probe
+            httpGet:
+              path: /api/server/status
+              port: api
+              scheme: HTTPS
+              httpHeaders:
+                - name: X-Requested-With
+                  value: kubelet
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            <<: *probe
+            failureThreshold: 6
+          readinessProbe:
+            <<: *probe
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1536Mi
+            limits:
+              memory: 2Gi
+          volumeMounts:
+            - name: keystore
+              mountPath: /run/oie-secrets
+              readOnly: true
+            - name: appdata
+              mountPath: /opt/engine/appdata
+            - name: logs
+              mountPath: /opt/engine/logs
+      volumes:
+        - name: keystore
+          secret:
+            secretName: oie-keystore
+            defaultMode: 0400
+        - name: appdata
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oie-utility
+  labels:
+    app.kubernetes.io/name: oie
+    app.kubernetes.io/component: utility
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: oie
+    app.kubernetes.io/component: utility
+  ports:
+    - name: api
+      port: 8443
+---
+# The utility node.
+#
+# One replica, and it must stay one: it runs the channels placed SINGLETON --
+# the pollers, which read the same source once per node if you let them -- and
+# the scheduled extensions. A StatefulSet of one gives at-most-once scheduling,
+# which is the honest guarantee here. It is not highly available: if this pod is
+# down, the singleton channels are not running. The cluster extension reports
+# that rather than falling back to deploying them everywhere, because "every
+# node polls the directory" is a worse failure than "nothing polls it".
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: oie-utility
+  labels:
+    app.kubernetes.io/name: oie
+    app.kubernetes.io/component: utility
+spec:
+  serviceName: oie-utility
+  replicas: 1
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oie
+      app.kubernetes.io/component: utility
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oie
+        app.kubernetes.io/component: utility
+    spec:
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: engine
+          image: oie/engine:4.6.0
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: oie-config
+            - secretRef:
+                name: oie-secrets
+          env:
+            - name: OIE_CLUSTER_ROLE
+              value: utility
+            - name: OIE_SERVER_ID_FROM
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OIE_CLUSTER_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: KEYSTORE_STOREPASS
+              valueFrom:
+                secretKeyRef:
+                  name: oie-secrets
+                  key: KEYSTORE_PASSWORD
+            - name: KEYSTORE_KEYPASS
+              valueFrom:
+                secretKeyRef:
+                  name: oie-secrets
+                  key: KEYSTORE_PASSWORD
+            - name: _MP_SERVER_INITIALADMINPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: oie-secrets
+                  key: OIE_ADMIN_PASSWORD
+          ports:
+            - name: api
+              containerPort: 8443
+          startupProbe: &utility-probe
+            httpGet:
+              path: /api/server/status
+              port: api
+              scheme: HTTPS
+              httpHeaders:
+                - name: X-Requested-With
+                  value: kubelet
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            <<: *utility-probe
+            failureThreshold: 6
+          readinessProbe:
+            <<: *utility-probe
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1536Mi
+            limits:
+              memory: 2Gi
+          volumeMounts:
+            - name: keystore
+              mountPath: /run/oie-secrets
+              readOnly: true
+            - name: appdata
+              mountPath: /opt/engine/appdata
+            - name: logs
+              mountPath: /opt/engine/logs
+      volumes:
+        - name: keystore
+          secret:
+            secretName: oie-keystore
+            defaultMode: 0400
+        - name: appdata
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}

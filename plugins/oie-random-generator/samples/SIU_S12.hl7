@@ -1,0 +1,8 @@
+MSH|^~\&|${message.sendingApplication}|${message.sendingFacility}|${message.receivingApplication}|${message.receivingFacility}|${message.datetime}||${message.type}^${message.event}^${message.structure}|${message.controlId}|${message.processingId}|${message.version}|||AL|NE|AU|UNICODE UTF-8
+SCH|${random.digits:7}^${message.sendingApplication}|||||${random.pick:ROUTINE,URGENT,FOLLOWUP}|${random.pick:CONSULT^Specialist consultation,REVIEW^Post-operative review,IMAGING^Imaging appointment}|^^^${date.offset:+7d}|||^^^${date.offset:+7d}^^^^^${random.pick:15,20,30,45}^MIN|${visit.attending.xcn}||||${visit.attending.xcn}|||||||||BOOKED
+PID|1||${patient.mrn}^^^${message.sendingFacility}^MR~${patient.medicare}^^^AUSHIC^MC||${patient.family}^${patient.given}^${patient.middle}^^${patient.prefix}||${patient.dob}|${patient.sex}|||${patient.street}^^${patient.suburb}^${patient.state}^${patient.postcode}^AUS^H||${patient.phone}^PRN^PH~${patient.mobile}^PRN^CP|||${patient.maritalStatus}||${patient.accountNumber}
+PV1|1|${visit.class}|${visit.location}|${visit.admitType}|||${visit.attending.xcn}|${visit.referring.xcn}||${visit.hospitalService}|||||||${visit.attending.xcn}||${visit.number}|${visit.financialClass}||||||||||||||||||||||||${visit.admitTime}
+RGS|1|A
+AIS|1|A|${random.pick:CONSULT^Specialist consultation,REVIEW^Post-operative review}|${date.offset:+7d}
+AIL|1|A|${visit.pointOfCare}^${visit.room}^^${visit.facility}|CLINIC||${date.offset:+7d}
+AIP|1|A|${visit.attending.xcn}|${random.pick:ATTPHYS^Attending physician,CONPHYS^Consulting physician}||${date.offset:+7d}

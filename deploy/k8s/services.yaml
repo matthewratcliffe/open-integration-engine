@@ -1,0 +1,85 @@
+# The two addresses that matter: one for people, one for message traffic.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oie-admin
+  labels:
+    app.kubernetes.io/name: oie
+spec:
+  type: ClusterIP
+  # Every engine, both roles. The utility node serves the admin API like any
+  # other member, and the console it serves answers for the whole cluster.
+  #
+  # No sessionAffinity on purpose. With SESSION_STORE=true the session lives in
+  # PostgreSQL, so consecutive requests may land on different engines and still
+  # be the same logged-in session -- which is the property that makes this a
+  # cluster rather than three servers behind one name. If you find yourself
+  # reaching for affinity here, check that setting first.
+  selector:
+    app.kubernetes.io/name: oie
+  ports:
+    - name: api
+      port: 8443
+      targetPort: api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oie-channels
+  labels:
+    app.kubernetes.io/name: oie
+  annotations:
+    oie.local/note: >-
+      Change to type: LoadBalancer (or put an ingress in front) to accept
+      traffic from outside the cluster.
+spec:
+  type: ClusterIP
+  # Workers only. Channel traffic is what the workers are for; keeping it off
+  # the utility node leaves that pod's headroom for the pollers and the pruner.
+  selector:
+    app.kubernetes.io/name: oie
+    app.kubernetes.io/component: worker
+  ports:
+    # Only the ports your deployed channels actually bind. A listener exists on
+    # a pod only when the channel is deployed there, which is also why the
+    # readiness of channel traffic is best measured with a TCP probe on the port
+    # rather than with the API's status endpoint.
+    - name: channel-http
+      port: 8081
+      targetPort: channel-http
+    - name: channel-mllp
+      port: 6661
+      targetPort: channel-mllp
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: oie-worker
+  labels:
+    app.kubernetes.io/name: oie
+spec:
+  # A voluntary disruption may take one worker at a time. Rolling an update
+  # through three pods costs 60-90s of N-1 capacity per pod; taking two at once
+  # would halve the cluster.
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oie
+      app.kubernetes.io/component: worker
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: oie-utility
+  labels:
+    app.kubernetes.io/name: oie
+spec:
+  # The utility node is a single replica by design, so the only useful budget is
+  # "do not evict it as part of routine maintenance". A node drain still can,
+  # once, which is the at-most-once guarantee being honest about itself.
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oie
+      app.kubernetes.io/component: utility

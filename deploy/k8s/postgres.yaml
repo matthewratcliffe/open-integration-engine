@@ -1,0 +1,98 @@
+# PostgreSQL, for a cluster you are trying out rather than running.
+#
+# Deliberately minimal and deliberately separate from the rest of the manifests:
+# a single-replica StatefulSet with one PVC is fine for proving the cluster
+# works and is not a database you should put messages in. Every engine's
+# configuration, every channel and every message lives here, and the whole
+# cluster is down when it is.
+#
+# For anything real, use a managed service or an operator (CloudNativePG,
+# Patroni) and point DATABASE_URL in the ConfigMap at it. Then this file is one
+# you delete rather than one you tune.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oie-db
+  labels:
+    app.kubernetes.io/name: oie
+    app.kubernetes.io/component: db
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: oie
+    app.kubernetes.io/component: db
+  ports:
+    - name: postgres
+      port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: oie-db
+  labels:
+    app.kubernetes.io/name: oie
+    app.kubernetes.io/component: db
+spec:
+  serviceName: oie-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oie
+      app.kubernetes.io/component: db
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oie
+        app.kubernetes.io/component: db
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: postgres:18.3-alpine
+          args:
+            # Each engine holds two pools of DATABASE_MAX_CONNECTIONS, so four
+            # engines at the default of 20 is 160 connections before psql, a
+            # backup job or an operator connects at all. The server default of
+            # 100 is the real ceiling on how many engines one database serves.
+            - postgres
+            - -c
+            - max_connections=300
+          env:
+            - name: POSTGRES_DB
+              value: mirthdb
+            - name: POSTGRES_USER
+              value: mirthdb
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: oie-secrets
+                  key: POSTGRES_PASSWORD
+            # Keep the cluster in a subdirectory so the volume root stays free
+            # for lost+found, exactly as compose.yaml does.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "mirthdb", "-d", "mirthdb"]
+            periodSeconds: 5
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi

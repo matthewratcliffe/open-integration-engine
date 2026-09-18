@@ -1,0 +1,5 @@
+MSH|^~\&|${message.sendingApplication}|${message.sendingFacility}|${message.receivingApplication}|${message.receivingFacility}|${message.datetime}||${message.type}^${message.event}^${message.structure}|${message.controlId}|${message.processingId}|${message.version}|||AL|NE|AU|UNICODE UTF-8
+MFI|PRA^Practitioner master file^HL70175||UPD|${message.datetime}||NE
+MFE|MUP|${message.controlId}|${message.datetime}|${visit.attending.id}|ID
+STF|${visit.attending.id}|${visit.attending.id}^^^${message.sendingFacility}^PRN|${visit.attending.family}^${visit.attending.given}^^^Dr|P|||${random.pick:M,F}|A||${random.pick:MED^Medical,SURG^Surgical,EMRG^Emergency,RAD^Radiology}|${random.digits:8}^WPN^PH
+PRA|${visit.attending.id}|${message.sendingFacility}|${random.pick:GP^General practice,CARD^Cardiology,ORTH^Orthopaedics,ONC^Oncology,EMRG^Emergency medicine}|||MED${random.digits:7}

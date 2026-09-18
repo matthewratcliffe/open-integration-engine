@@ -1,0 +1,231 @@
+# Open Integration Engine: build the image, validate channels against a
+# throwaway engine, then push configuration to the real environments.
+#
+# The pipeline treats config/ as the source of truth. A merge request gets a
+# dry run plus a real push against a disposable engine started as a CI service,
+# which is what catches a channel the server cannot deserialise -- the failure
+# mode the API reports as success.
+#
+# CI/CD variables to set (Settings > CI/CD > Variables), all masked:
+#   OIE_STAGING_URL          https://oie.staging.example.org/api
+#   OIE_STAGING_PASSWORD
+#   OIE_PROD_URL             https://oie.example.org/api
+#   OIE_PROD_PASSWORD
+#   DOWNSTREAM_FHIR_URL      referenced by config/configuration-map.properties
+#   DOWNSTREAM_FHIR_TOKEN
+#
+# If your channels use a licensed extension's connectors (e.g. Zen SSL), set
+# these too, so the validate-stage engine can deserialise those channels.
+# Without the extension the server stores the invalid-channel stub and
+# validation fails -- correctly, since the channel would never have run:
+#   OIE_EXTENSION_URLS       https://.../packages/generic/zen-ssl/1.0.0/zen-ssl.zip
+#   OIE_DOWNLOAD_HEADER      PRIVATE-TOKEN: <token>   (or JOB-TOKEN for this project)
+#   OIE_REQUIRED_EXTENSIONS  Zen SSL Extension        (asserted before deploying)
+#
+# If the engine sits behind the mTLS proxy, add a File-type variable holding the
+# client certificate and key and point OIE_CLIENT_CERT / OIE_CLIENT_KEY at them;
+# add the CA as OIE_CACERT and drop OIE_INSECURE.
+
+stages:
+  - build
+  - validate
+  - deploy
+
+variables:
+  OIE_VERSION: "4.6.0"
+  OIE_SHA256: "7c82e79027e671277e1d78d0f7bbb1c53ddf1be476f1e80c2ddbfcf7855900ea"
+  IMAGE: "$CI_REGISTRY_IMAGE/engine"
+  DOCKER_DRIVER: overlay2
+
+########################################################################
+# Build
+########################################################################
+build-image:
+  stage: build
+  image: docker:29-cli
+  services:
+    - docker:29-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_HOST: "tcp://docker:2376"
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: "/certs/client"
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+    - |
+      docker build \
+        --build-arg "OIE_VERSION=$OIE_VERSION" \
+        --build-arg "OIE_SHA256=$OIE_SHA256" \
+        --tag "$IMAGE:$OIE_VERSION-$CI_COMMIT_SHORT_SHA" \
+        --tag "$IMAGE:$OIE_VERSION" \
+        ./docker
+    - docker push "$IMAGE:$OIE_VERSION-$CI_COMMIT_SHORT_SHA"
+    - docker push "$IMAGE:$OIE_VERSION"
+    # Only move the floating tag once the commit is on the default branch.
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        docker tag "$IMAGE:$OIE_VERSION-$CI_COMMIT_SHORT_SHA" "$IMAGE:latest"
+        docker push "$IMAGE:latest"
+      fi
+  rules:
+    - changes:
+        - docker/**/*
+        - .gitlab-ci.yml
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+########################################################################
+# Shared setup for jobs that talk to the API
+########################################################################
+.api-job:
+  image: alpine:3.22
+  before_script:
+    - apk add --no-cache bash curl libxml2-utils
+    # curl needs the CI-provided cert/key readable and nothing else does.
+    - if [ -n "$OIE_CLIENT_KEY" ]; then chmod 600 "$OIE_CLIENT_KEY"; fi
+
+########################################################################
+# Validate: push to a disposable engine and prove the channels deploy
+########################################################################
+validate-config:
+  stage: validate
+  extends: .api-job
+  services:
+    - name: postgres:18.3-alpine
+      alias: db
+      variables:
+        POSTGRES_DB: mirthdb
+        POSTGRES_USER: mirthdb
+        POSTGRES_PASSWORD: ci-throwaway
+    - name: $IMAGE:$OIE_VERSION-$CI_COMMIT_SHORT_SHA
+      alias: engine
+      variables:
+        DATABASE: postgres
+        DATABASE_URL: jdbc:postgresql://db:5432/mirthdb
+        DATABASE_USERNAME: mirthdb
+        DATABASE_PASSWORD: ci-throwaway
+        DATABASE_MAX_RETRY: "30"
+        DATABASE_RETRY_WAIT: "3000"
+        KEYSTORE_STOREPASS: ci-throwaway
+        KEYSTORE_KEYPASS: ci-throwaway
+        OIE_HEAP_MAX: 768m
+        # Nothing should already be deployed while we validate.
+        SERVER_STARTUP_DEPLOY: "false"
+        # Licensed extensions the channels depend on. Same artifact the runtime
+        # environments use, so validation exercises the real connector classes.
+        OIE_EXTENSION_URLS: "$OIE_EXTENSION_URLS"
+        OIE_DOWNLOAD_HEADER: "$OIE_DOWNLOAD_HEADER"
+        # Only needed while the vendor build still declares an older
+        # mirthVersion; see extensions/README.md.
+        OIE_EXTENSION_RETAG_VERSION: "$OIE_EXTENSION_RETAG_VERSION"
+  variables:
+    OIE_URL: "https://engine:8443/api"
+    OIE_INSECURE: "true"
+    # The throwaway engine still boots on admin/admin, so rotate it the same
+    # way compose does and then use the rotated password.
+    OIE_ADMIN_PASSWORD: "ci-throwaway-admin"
+    OIE_PASSWORD: "ci-throwaway-admin"
+    # Placeholders so ${...} references in the configuration map resolve.
+    DOWNSTREAM_FHIR_URL: "https://fhir.invalid"
+    DOWNSTREAM_FHIR_TOKEN: "ci-placeholder"
+    # Comma-separated extension names the channels need, e.g.
+    # "Zen SSL Extension". Run oie-check-extensions.sh with no arguments
+    # against a working server to get the exact names. Empty = list only.
+    OIE_REQUIRED_EXTENSIONS: "$OIE_REQUIRED_EXTENSIONS"
+  script:
+    - ./scripts/oie-bootstrap-admin.sh
+    # Fail on a missing extension here, with the name of the missing one,
+    # rather than letting it surface as every channel being invalid. An
+    # extension that fails to load does not stop the engine and is not
+    # reported by the API, so this has to be an explicit assertion.
+    - ./scripts/oie-check-extensions.sh
+    # The real thing, against a server nobody depends on: every channel is
+    # created, read back, checked for the invalid-channel stub, deployed, and
+    # confirmed running. A typo in a connector property fails here.
+    - ./scripts/oie-config-push.sh
+  needs:
+    - build-image
+
+# Cheap syntax gate that does not need an engine, so a config-only MR gets
+# feedback even if the image build is skipped.
+lint-config:
+  stage: validate
+  image: alpine:3.22
+  before_script:
+    - apk add --no-cache libxml2-utils
+  script:
+    - |
+      set -eu
+      status=0
+      for f in config/channels/*.xml; do
+        [ -e "$f" ] || continue
+        xmllint --noout "$f" || { echo "$f: not well-formed XML"; status=1; continue; }
+        id=$(xmllint --xpath 'string(/channel/id)' "$f" 2>/dev/null || true)
+        if [ -z "$id" ]; then
+          echo "$f: no /channel/id -- export the channel from the Administrator"
+          status=1
+        fi
+      done
+      # Duplicate ids would make the push order decide which file wins.
+      dupes=$(xmllint --xpath '//channel/id/text()' config/channels/*.xml 2>/dev/null \
+              | tr -d ' ' | sort | uniq -d || true)
+      if [ -n "$dupes" ]; then
+        echo "duplicate channel ids across config/channels: $dupes"
+        status=1
+      fi
+      exit $status
+  rules:
+    - changes:
+        - config/**/*
+
+########################################################################
+# Deploy
+########################################################################
+.deploy:
+  stage: deploy
+  extends: .api-job
+  variables:
+    OIE_REQUIRED_EXTENSIONS: "$OIE_REQUIRED_EXTENSIONS"
+    # Set CLUSTER_ARGS to --wait-cluster for an environment running more than
+    # one engine (docs/multi-pod.md). The deploy reaches whichever engine
+    # answered and the cluster extension carries it to the rest, so without this
+    # the pipeline goes green while the others are still catching up -- or while
+    # one of them is failing to deploy the channel at all. Left empty by default
+    # because a single-engine environment has no cluster API to ask.
+    CLUSTER_ARGS: ""
+  script:
+    # Refuse to deploy into an environment missing an extension the channels
+    # need: the push would "succeed" and leave every affected channel dead.
+    - ./scripts/oie-check-extensions.sh
+    # Show what will change before changing it -- the log becomes the record.
+    - ./scripts/oie-config-push.sh --dry-run
+    - ./scripts/oie-config-push.sh $PUSH_ARGS $CLUSTER_ARGS
+
+deploy-staging:
+  extends: .deploy
+  variables:
+    OIE_URL: "$OIE_STAGING_URL"
+    OIE_PASSWORD: "$OIE_STAGING_PASSWORD"
+    # Staging mirrors config/ exactly, including removals.
+    PUSH_ARGS: "--prune"
+  environment:
+    name: staging
+    url: "$OIE_STAGING_URL"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+deploy-production:
+  extends: .deploy
+  variables:
+    OIE_URL: "$OIE_PROD_URL"
+    OIE_PASSWORD: "$OIE_PROD_PASSWORD"
+    # No --prune in production: deleting a channel takes its message history
+    # with it, so removals are done deliberately rather than by omission.
+    PUSH_ARGS: ""
+  environment:
+    name: production
+    url: "$OIE_PROD_URL"
+  when: manual
+  allow_failure: false
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

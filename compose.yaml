@@ -1,0 +1,142 @@
+name: oie
+
+# Base stack: PostgreSQL + Open Integration Engine.
+#
+#   docker compose up -d --build
+#
+# Optional overlays (see README):
+#   docker compose -f compose.yaml -f compose.proxy.yaml up -d   # mTLS front door
+#   docker compose -f compose.yaml -f compose.dev.yaml  up -d    # expose Postgres
+
+volumes:
+  db-data:
+  engine-appdata:
+  engine-logs:
+
+networks:
+  oie:
+
+services:
+  db:
+    image: postgres:${POSTGRES_IMAGE_TAG:-18.3-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mirthdb}
+      POSTGRES_USER: ${POSTGRES_USER:-mirthdb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # Keep the cluster in a subdirectory so the volume root stays free for
+      # lost+found on bind mounts.
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: ${TZ:-UTC}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks: [oie]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    # The engine holds two pools (read/write + read-only) of
+    # DATABASE_MAX_CONNECTIONS each, so the server default of 100 is the real
+    # ceiling on how many engine replicas one database can serve.
+    command:
+      - postgres
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-200}
+
+  engine:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile
+      args:
+        OIE_VERSION: ${OIE_VERSION:-4.6.0}
+        OIE_SHA256: ${OIE_SHA256:-7c82e79027e671277e1d78d0f7bbb1c53ddf1be476f1e80c2ddbfcf7855900ea}
+        INCLUDE_ADMIN_CLIENT: ${INCLUDE_ADMIN_CLIENT:-true}
+        INCLUDE_CLI: ${INCLUDE_CLI:-false}
+    image: ${OIE_IMAGE:-oie/engine:4.6.0}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE: postgres
+      DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-mirthdb}
+      DATABASE_USERNAME: ${POSTGRES_USER:-mirthdb}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      DATABASE_MAX_CONNECTIONS: ${DATABASE_MAX_CONNECTIONS:-20}
+      DATABASE_READONLY_MAX_CONNECTIONS: ${DATABASE_READONLY_MAX_CONNECTIONS:-20}
+      DATABASE_MAX_RETRY: 10
+      DATABASE_RETRY_WAIT: 5000
+
+      # Guards the engine's own self-signed keystore at appdata/keystore.jks.
+      # The shipped default is baked into every 4.6.0 tarball, so override it.
+      KEYSTORE_STOREPASS: ${KEYSTORE_PASSWORD:-changeme}
+      KEYSTORE_KEYPASS: ${KEYSTORE_PASSWORD:-changeme}
+
+      # Seeds the admin password the first time the schema is created. Without
+      # it the engine generates a random one and only writes it to the log, so
+      # CI could never log in. Ignored on every later boot.
+      _MP_SERVER_INITIALADMINPASSWORD: ${OIE_ADMIN_PASSWORD:?set OIE_ADMIN_PASSWORD in .env}
+
+      # 0 switches off the plaintext admin listener entirely. The REST API is
+      # HTTPS-only regardless (server.api.allowhttp defaults to false), so all
+      # port 8080 ever served was the static welcome page.
+      HTTP_PORT: ${HTTP_PORT:-0}
+
+      # Licensed / third-party extensions. Zips in ./extensions are mounted and
+      # installed automatically; these fetch them from a private registry
+      # instead, which suits CI better than shipping zips to hosts.
+      OIE_EXTENSION_URLS: ${OIE_EXTENSION_URLS:-}
+      OIE_DOWNLOAD_HEADER: ${OIE_DOWNLOAD_HEADER:-}
+      # Rewrites an installed extension's <mirthVersion> to the running version.
+      # Extension compatibility is an exact string match, so an extension built
+      # for Mirth Connect 4.5.x is refused by OIE 4.6.0 outright. See
+      # extensions/README.md before turning this on.
+      OIE_EXTENSION_RETAG_VERSION: ${OIE_EXTENSION_RETAG_VERSION:-false}
+
+      # Allow the web console to embed an extension's own web app (TLS Manager's
+      # certificate manager) in a sidebar view. ClickjackingFilter otherwise
+      # sends X-Frame-Options: DENY and frame-ancestors 'none' on every WAR, so
+      # the panel stays blank. SAMEORIGIN still refuses framing by anyone else.
+      # Set both back to the engine defaults if you do not want the bridge.
+      _MP_SERVER_API_XFRAMEOPTIONS: ${API_XFRAME_OPTIONS:-SAMEORIGIN}
+      _MP_SERVER_API_CONTENTSECURITYPOLICY: ${API_CSP:-frame-ancestors 'self'}
+
+      OIE_HEAP_MAX: ${OIE_HEAP_MAX:-1g}
+      TZ: ${TZ:-UTC}
+    ports:
+      # Admin UI + REST API. Bound to loopback by default; front it with the
+      # proxy overlay (or your own ingress) before exposing it off-box.
+      - "${OIE_BIND_ADDRESS:-127.0.0.1}:${OIE_HTTPS_PORT:-8443}:8443"
+    volumes:
+      - engine-appdata:/opt/engine/appdata
+      - engine-logs:/opt/engine/logs
+      # Drop licensed/third-party extension zips (e.g. Zen) in ./extensions.
+      - ./extensions:/opt/engine/custom-extensions:ro
+    networks: [oie]
+    stop_grace_period: 2m
+
+  # One-shot: rotates the admin account off the password 4.6.0 ships with.
+  #
+  # 4.6.0 seeds admin/admin and has no way to seed a chosen password from
+  # config -- server.initialadminpassword only landed on main after the
+  # release. Leaving the default in place would mean every `compose up` stands
+  # up a reachable API with well-known credentials, so the stack fixes it
+  # itself. Idempotent: on later boots it confirms the password and exits.
+  bootstrap:
+    image: ${OIE_IMAGE:-oie/engine:4.6.0}
+    depends_on:
+      engine:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/bash", "/opt/oie/scripts/oie-bootstrap-admin.sh"]
+    environment:
+      OIE_URL: https://engine:8443/api
+      # The engine's cert is the self-signed one it generates for itself, and
+      # this hop never leaves the compose network.
+      OIE_INSECURE: "true"
+      OIE_ADMIN_PASSWORD: ${OIE_ADMIN_PASSWORD:?set OIE_ADMIN_PASSWORD in .env}
+    volumes:
+      - ./scripts:/opt/oie/scripts:ro
+    networks: [oie]

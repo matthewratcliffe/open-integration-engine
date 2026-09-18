@@ -1,0 +1,33 @@
+<connectorMetaData path="fhir">
+    <name>FHIR Listener</name>
+    <author>This repository</author>
+    <pluginVersion>@PLUGIN_VERSION@</pluginVersion>
+    <!--
+      Exact string match against the server version, split on commas. An
+      extension declaring anything else is refused outright by ExtensionLoader
+      and silently not loaded, so build.sh stamps this from MIRTH_VERSION.
+    -->
+    <mirthVersion>@MIRTH_VERSION@</mirthVersion>
+    <url>https://openintegrationengine.org</url>
+    <description>Presents a FHIR R4 or R5 RESTful facade in front of a channel. Parses the interaction, resource type, id and search parameters out of the request, hands them to the channel, and turns what the destinations return into a valid FHIR response -- status code, Location, ETag, versioned media type, and an OperationOutcome whenever there is nothing else valid to send. Serves plain HTTP for a proxy in front to terminate, or TLS itself from a key store, with optional client certificates verified against a trust store.</description>
+
+    <clientClassName>org.openintegrationengine.connectors.fhir.client.FhirListener</clientClassName>
+    <serverClassName>org.openintegrationengine.connectors.fhir.server.FhirReceiver</serverClassName>
+    <sharedClassName>org.openintegrationengine.connectors.fhir.FhirReceiverProperties</sharedClassName>
+
+    <library type="CLIENT" path="fhir-client.jar" />
+    <library type="SHARED" path="fhir-shared.jar" />
+    <library type="SERVER" path="fhir-server.jar" />
+
+    <!--
+      No third-party libraries. Jetty, Apache HttpClient and Jackson all live in
+      the engine's own server-lib and are visible to an extension classloader,
+      which is how the core HTTP connector uses Jetty without bundling it. A
+      FHIR model library (HAPI) is deliberately absent: two releases of its
+      structure jars would add well over a hundred megabytes to an extension
+      that moves bytes between a socket and a channel.
+    -->
+
+    <protocol>fhir</protocol>
+    <type>SOURCE</type>
+</connectorMetaData>

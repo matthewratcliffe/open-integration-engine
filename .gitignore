@@ -1,0 +1,24 @@
+# Secrets and local overrides
+.env
+.env.local
+*.local.yaml
+
+# Licensed / third-party extension zips are not ours to redistribute.
+extensions/*.zip
+
+# TLS material. Certificates are environment-specific and keys never belong
+# in git -- generate dev ones with scripts/gen-dev-certs.sh.
+proxy/certs/*
+!proxy/certs/README.md
+
+# The cluster's shared keystore. It carries the key every node's encrypted data
+# is written under, so it belongs in a secret store and a backup, never here.
+secrets/*
+!secrets/README.md
+
+# Scratch
+*.log
+
+# Plugin build output
+plugins/*/build/
+plugins/*/dist/

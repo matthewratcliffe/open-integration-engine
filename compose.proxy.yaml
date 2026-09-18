@@ -1,0 +1,44 @@
+name: oie
+
+# Optional mTLS front door.
+#
+# Core OIE has no TLS on its HTTP/TCP/Web Service *listeners* and no client
+# certificate verification anywhere except the DICOM connectors, so mutual TLS
+# has to be terminated in front of the engine. That is what this overlay does,
+# and it is the free alternative to the commercial Zen SSL extension.
+#
+#   docker compose -f compose.yaml -f compose.proxy.yaml up -d
+#
+# Before starting, put these in ./proxy/certs (see proxy/certs/README.md):
+#   server.crt  server.key   the certificate this proxy presents
+#   clients-ca.crt           the CA that signs the client certificates you trust
+#
+# Exposes:
+#   :443   -> engine:8443  admin UI + REST API, client cert required
+#   :8444  -> engine:8081  channel HTTP listener, client cert required
+#   :6662  -> engine:6661  MLLP over TLS, client cert required
+
+services:
+  engine:
+    # No published ports: the proxy is the only way in.
+    ports: !override []
+
+  proxy:
+    image: nginx:${NGINX_IMAGE_TAG:-1.29-alpine}
+    restart: unless-stopped
+    depends_on:
+      engine:
+        condition: service_healthy
+    ports:
+      - "${PROXY_API_PORT:-443}:443"
+      - "${PROXY_HTTP_PORT:-8444}:8444"
+      - "${PROXY_MLLP_PORT:-6662}:6662"
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./proxy/certs:/etc/nginx/certs:ro
+    networks: [oie]
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t -q"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

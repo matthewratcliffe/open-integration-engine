@@ -1,0 +1,34 @@
+<connectorMetaData path="generator">
+    <name>Random Generator</name>
+    <author>This repository</author>
+    <pluginVersion>@PLUGIN_VERSION@</pluginVersion>
+    <!--
+      Exact string match against the server version, split on commas. A connector
+      declaring anything else is refused outright by ExtensionLoader and silently
+      not loaded — and then every channel using it is stored as an invalid
+      channel while the API still reports a successful save. build.sh stamps this
+      from MIRTH_VERSION.
+    -->
+    <mirthVersion>@MIRTH_VERSION@</mirthVersion>
+    <url>https://openintegrationengine.org</url>
+    <description>Generates synthetic HL7 v2 messages on the polling schedule, for testing a channel or a downstream interface when there is no upstream system to receive from yet. Ships an editable sample per message type (ADT, ORM, ORU, SIU, DFT, MFN), with placeholders that resolve against a fixed population of invented patients: one patient carries the same MRN, name and PV1 in every message it appears in, and the same seed produces the same population on every engine.</description>
+
+    <!--
+      The name in the channel XML is matched against ConnectorProperties.getName(),
+      and the class named here is what the engine instantiates for it. Both must
+      agree with RandomGeneratorProperties.getName().
+    -->
+    <clientClassName>org.openintegrationengine.connectors.generator.client.RandomGeneratorPanel</clientClassName>
+    <serverClassName>org.openintegrationengine.connectors.generator.server.RandomGeneratorReceiver</serverClassName>
+    <sharedClassName>org.openintegrationengine.connectors.generator.RandomGeneratorProperties</sharedClassName>
+
+    <library type="CLIENT" path="generator-client.jar" />
+    <library type="SHARED" path="generator-shared.jar" />
+    <library type="SERVER" path="generator-server.jar" />
+
+    <apiProvider type="SERVLET_INTERFACE" name="org.openintegrationengine.connectors.generator.GeneratorConnectorServletInterface" />
+    <apiProvider type="SERVER_CLASS" name="org.openintegrationengine.connectors.generator.server.GeneratorConnectorServlet" />
+
+    <protocol>generator</protocol>
+    <type>SOURCE</type>
+</connectorMetaData>

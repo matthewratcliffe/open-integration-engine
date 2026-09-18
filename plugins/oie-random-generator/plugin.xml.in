@@ -1,0 +1,23 @@
+<pluginMetaData path="generator">
+    <name>Random Generator Connector</name>
+    <author>This repository</author>
+    <pluginVersion>@PLUGIN_VERSION@</pluginVersion>
+    <!--
+      Exact string match against the server version, split on commas. build.sh
+      stamps this from MIRTH_VERSION.
+    -->
+    <mirthVersion>@MIRTH_VERSION@</mirthVersion>
+    <url>https://openintegrationengine.org</url>
+    <description>Registers the Random Generator's classes with the channel serializer. XStream refuses any class outside its allow list, which covers com.mirth.connect only, so without this the engine stores every channel using the connector as an invalid channel while reporting a successful save. Ships alongside source.xml in the same extension.</description>
+
+    <serverClasses>
+        <string>org.openintegrationengine.connectors.generator.server.GeneratorSerializerPlugin</string>
+    </serverClasses>
+    <clientClasses>
+        <string>org.openintegrationengine.connectors.generator.client.GeneratorSerializerClientPlugin</string>
+    </clientClasses>
+
+    <library type="SHARED" path="generator-shared.jar" />
+    <library type="SERVER" path="generator-server.jar" />
+    <library type="CLIENT" path="generator-client.jar" />
+</pluginMetaData>

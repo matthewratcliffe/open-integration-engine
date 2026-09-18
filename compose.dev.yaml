@@ -1,0 +1,28 @@
+name: oie
+
+# Local development conveniences. Never use this overlay on a shared host: it
+# publishes Postgres and the engine API on all interfaces.
+#
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d --build
+
+services:
+  db:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  engine:
+    environment:
+      # Set to false while writing channels if a half-finished one is making
+      # startup unpleasant; the engine then comes up with nothing deployed and
+      # you deploy explicitly.
+      SERVER_STARTUP_DEPLOY: ${SERVER_STARTUP_DEPLOY:-true}
+    ports:
+      - "0.0.0.0:${OIE_HTTPS_PORT:-8443}:8443"
+      # Example channel listener ports. Add your own as channels are added --
+      # the engine only binds what a deployed channel asks for.
+      - "0.0.0.0:${OIE_CHANNEL_HTTP_PORT:-8081}:8081"
+      - "0.0.0.0:${OIE_CHANNEL_MLLP_PORT:-6661}:6661"
+      # The SFTP Listener's default in push mode. The engine runs unprivileged
+      # and cannot bind 22 itself, so publish it as 22 here if partners expect
+      # the standard port: OIE_CHANNEL_SFTP_PORT=22.
+      - "0.0.0.0:${OIE_CHANNEL_SFTP_PORT:-2222}:2222"

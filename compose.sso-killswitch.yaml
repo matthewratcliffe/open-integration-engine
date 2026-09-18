@@ -1,0 +1,32 @@
+name: oie
+
+# Break glass: turn single sign-on off without the console.
+#
+#   OIE_OIDC_DISABLED=true \
+#   docker compose -f compose.yaml -f compose.sso-killswitch.yaml up -d
+#
+# SSO is configured in the console -- Settings > OIDC Authentication -- and
+# turned on and off by the Enabled tick there. This overlay exists for the case
+# where the console is the thing you cannot reach: a provider outage, a bad
+# redirect URI, an auto-redirect loop. It makes the engine refuse every OIDC
+# sign-in and stop advertising SSO to the login card, whatever the stored policy
+# says, so the ordinary username-and-password form is all that is offered.
+#
+# The console shows a banner while it is in force, pointing back at the variable
+# rather than letting the form look broken.
+#
+# Why an overlay rather than an entry in compose.yaml: the variable is declared
+# in list form, which Compose passes through ONLY when it is actually set. An
+# unset variable is then absent from the container rather than present-and-empty
+# -- and the extension reads any present OIE_OIDC_* variable as an operator
+# override, so a permanently-present one is not the harmless no-op it looks.
+#
+# Configuration itself has no overlay any more. If you need to pin settings from
+# the environment instead of the console -- a deployment that configures machines
+# rather than consoles -- see the pinning note in docs/sso.md, and expect the
+# console to show those fields read-only.
+
+services:
+  engine:
+    environment:
+      - OIE_OIDC_DISABLED

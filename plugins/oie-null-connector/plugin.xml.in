@@ -1,0 +1,23 @@
+<pluginMetaData path="nullsender">
+    <name>Null Connector Service Plugin</name>
+    <author>This repository</author>
+    <pluginVersion>@PLUGIN_VERSION@</pluginVersion>
+    <!--
+      Exact string match against the server version, split on commas, not a range.
+      build.sh stamps this from MIRTH_VERSION.
+    -->
+    <mirthVersion>@MIRTH_VERSION@</mirthVersion>
+    <url>https://openintegrationengine.org</url>
+    <description>Required for correct use of the Null Sender: registers its properties classes with the engine's XStream allowlist at server start, and with the desktop Administrator's at login. Without it every channel using the connector deserialises as an invalid channel while the API still reports a successful save.</description>
+
+    <serverClasses>
+        <string>org.openintegrationengine.connectors.nullsender.server.NullConnectorServicePlugin</string>
+    </serverClasses>
+    <clientClasses>
+        <string>org.openintegrationengine.connectors.nullsender.client.NullSerializerClientPlugin</string>
+    </clientClasses>
+
+    <library type="SHARED" path="nullsender-shared.jar" />
+    <library type="SERVER" path="nullsender-server.jar" />
+    <library type="CLIENT" path="nullsender-client.jar" />
+</pluginMetaData>

@@ -1,0 +1,10 @@
+{
+    "id": "cluster",
+    "name": "Cluster",
+    "version": "0.1.0",
+    "author": "This repository",
+    "description": "Every engine in the cluster, what each one has deployed, and where channels run.",
+    "enabled": true,
+    "oie": { "apiMin": "4.6" },
+    "client": { "entry": "web/plugin.js" }
+}

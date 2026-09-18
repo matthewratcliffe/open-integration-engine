@@ -1,0 +1,195 @@
+name: oie
+
+# Three engines against one database, behind one address.
+#
+#   ./scripts/oie-cluster-keystore.sh          # once: the shared keystore
+#   docker compose -f compose.yaml -f compose.cluster.yaml up -d
+#
+# The same shape as the Kubernetes manifests in deploy/k8s, small enough to run
+# on a laptop: one utility node, two workers, a round-robin front door, and the
+# cluster extension converging deployments across all three.
+#
+#   :8443  the cluster      -> round robin over all three engines
+#   :8081  channel HTTP     -> round robin
+#   :6661  channel MLLP     -> round robin
+#   :18443 engine  (utility node, direct)
+#   :18444 engine-w1        (direct)
+#   :18445 engine-w2        (direct)
+#
+# The direct ports are for looking at one node on its own -- its own dashboard,
+# its own thread viewer, its own log. Everything you would normally do goes
+# through :8443, which is the point of the exercise.
+#
+# Three things every node must agree on, all set below:
+#   * the same keystore, so they can read each other's encrypted data;
+#   * sessions in the database, so round robin does not log you out;
+#   * the configuration map in the database, so it is not per-container.
+#
+# And one thing they must NOT agree on: server.id. The entrypoint derives a
+# stable one per container from OIE_CLUSTER_NAME and the hostname.
+
+volumes:
+  engine-w1-appdata:
+  engine-w2-appdata:
+  engine-w1-logs:
+  engine-w2-logs:
+
+x-cluster-engine: &cluster-engine
+  image: ${OIE_IMAGE:-oie/engine:4.6.0}
+  restart: unless-stopped
+  environment: &cluster-env
+    DATABASE: postgres
+    DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-mirthdb}
+    DATABASE_USERNAME: ${POSTGRES_USER:-mirthdb}
+    DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    DATABASE_MAX_CONNECTIONS: ${DATABASE_MAX_CONNECTIONS:-20}
+    DATABASE_READONLY_MAX_CONNECTIONS: ${DATABASE_READONLY_MAX_CONNECTIONS:-20}
+    DATABASE_MAX_RETRY: 10
+    DATABASE_RETRY_WAIT: 5000
+
+    KEYSTORE_STOREPASS: ${KEYSTORE_PASSWORD:-changeme}
+    KEYSTORE_KEYPASS: ${KEYSTORE_PASSWORD:-changeme}
+    # The shared keystore. Without this every engine generates its own, and an
+    # engine cannot read channel properties or message content another one
+    # encrypted -- with no way back once data has been written under a key that
+    # has since been replaced.
+    KEYSTORE_SOURCE: /run/secrets/keystore.jks
+
+    _MP_SERVER_INITIALADMINPASSWORD: ${OIE_ADMIN_PASSWORD:?set OIE_ADMIN_PASSWORD in .env}
+    HTTP_PORT: ${HTTP_PORT:-0}
+
+    # Sessions in PostgreSQL (Jetty's JDBCSessionDataStore, over the engine's
+    # own datasource) and no in-memory session cache. Together these are what
+    # make a round-robin front door work without session affinity.
+    SESSION_STORE: "true"
+    _MP_SERVER_API_SESSIONCACHE: none
+
+    # The configuration map from the database rather than from each container's
+    # own appdata/configuration.properties.
+    _MP_CONFIGURATIONMAP_LOCATION: database
+
+    # The cluster extension deploys from intent; the engine's own startup deploy
+    # would deploy every enabled channel first and have to be corrected.
+    SERVER_STARTUP_DEPLOY: "false"
+
+    OIE_CLUSTER_ENABLED: "true"
+    OIE_CLUSTER_NAME: ${OIE_CLUSTER_NAME:-local}
+
+    # server.id style. `name` makes it the node's name rather than a UUID, which
+    # is what the message browser's "Server Id" column prints -- so every
+    # message and every destination says which node handled it, in words. Only
+    # affects a node whose appdata has no server.id yet; an engine never has its
+    # identity replaced. See docs/multi-pod.md.
+    OIE_SERVER_ID_STYLE: ${OIE_SERVER_ID_STYLE:-uuid}
+
+    OIE_EXTENSION_URLS: ${OIE_EXTENSION_URLS:-}
+    OIE_DOWNLOAD_HEADER: ${OIE_DOWNLOAD_HEADER:-}
+    OIE_EXTENSION_RETAG_VERSION: ${OIE_EXTENSION_RETAG_VERSION:-false}
+    _MP_SERVER_API_XFRAMEOPTIONS: ${API_XFRAME_OPTIONS:-SAMEORIGIN}
+    _MP_SERVER_API_CONTENTSECURITYPOLICY: ${API_CSP:-frame-ancestors 'self'}
+    OIE_HEAP_MAX: ${OIE_HEAP_MAX:-1g}
+    TZ: ${TZ:-UTC}
+  secrets:
+    - keystore.jks
+  networks: [oie]
+  stop_grace_period: 2m
+
+services:
+  db:
+    # Two pools per engine, so four engines' worth of headroom at the default
+    # DATABASE_MAX_CONNECTIONS of 20 is 160 connections before anything else
+    # connects at all.
+    command:
+      - postgres
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-300}
+
+  # The utility node. Runs the singleton-placed channels and the scheduled
+  # extensions -- the data pruner, git sync, the volume monitor -- which are
+  # exactly the things that must not run once per pod.
+  engine:
+    environment:
+      <<: *cluster-env
+      OIE_CLUSTER_ROLE: utility
+      OIE_CLUSTER_NODE_NAME: ${OIE_CLUSTER_NAME:-local}-utility
+      OIE_CLUSTER_ADDRESS: https://localhost:18443/
+    secrets:
+      - keystore.jks
+    ports: !override
+      - "${OIE_BIND_ADDRESS:-127.0.0.1}:18443:8443"
+
+  engine-w1:
+    <<: *cluster-engine
+    depends_on:
+      # Not just ordering: the first engine to reach an empty database creates
+      # the schema, and three of them migrating at once is a race nobody needs
+      # to run. This is what podManagementPolicy: OrderedReady does in the
+      # Kubernetes manifests.
+      engine:
+        condition: service_healthy
+    environment:
+      <<: *cluster-env
+      OIE_CLUSTER_ROLE: worker
+      OIE_CLUSTER_NODE_NAME: ${OIE_CLUSTER_NAME:-local}-w1
+      OIE_CLUSTER_ADDRESS: https://localhost:18444/
+      # One image, two roles. Everything that does scheduled work from settings
+      # in the shared configuration table runs on the utility node only.
+      OIE_DISABLE_EXTENSIONS: ${OIE_WORKER_DISABLE_EXTENSIONS:-datapruner,gitsync,volumemonitor}
+    ports:
+      - "${OIE_BIND_ADDRESS:-127.0.0.1}:18444:8443"
+    volumes:
+      - engine-w1-appdata:/opt/engine/appdata
+      - engine-w1-logs:/opt/engine/logs
+      - ./extensions:/opt/engine/custom-extensions:ro
+
+  engine-w2:
+    <<: *cluster-engine
+    depends_on:
+      engine:
+        condition: service_healthy
+    environment:
+      <<: *cluster-env
+      OIE_CLUSTER_ROLE: worker
+      OIE_CLUSTER_NODE_NAME: ${OIE_CLUSTER_NAME:-local}-w2
+      OIE_CLUSTER_ADDRESS: https://localhost:18445/
+      OIE_DISABLE_EXTENSIONS: ${OIE_WORKER_DISABLE_EXTENSIONS:-datapruner,gitsync,volumemonitor}
+    ports:
+      - "${OIE_BIND_ADDRESS:-127.0.0.1}:18445:8443"
+    volumes:
+      - engine-w2-appdata:/opt/engine/appdata
+      - engine-w2-logs:/opt/engine/logs
+      - ./extensions:/opt/engine/custom-extensions:ro
+
+  # One address in front of all three, spreading connections round robin. What
+  # a Kubernetes Service does, in the smallest thing that does it.
+  lb:
+    image: nginx:${NGINX_IMAGE_TAG:-1.29-alpine}
+    restart: unless-stopped
+    depends_on:
+      engine:
+        condition: service_healthy
+    ports:
+      - "${OIE_BIND_ADDRESS:-127.0.0.1}:${OIE_HTTPS_PORT:-8443}:8443"
+      - "${OIE_BIND_ADDRESS:-127.0.0.1}:${OIE_CHANNEL_HTTP_PORT:-8081}:8081"
+      - "${OIE_BIND_ADDRESS:-127.0.0.1}:${OIE_CHANNEL_MLLP_PORT:-6661}:6661"
+    volumes:
+      - ./proxy/cluster-lb.conf:/etc/nginx/nginx.conf:ro
+    networks: [oie]
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t -q"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # The admin password is rotated once, against the node that owns the schema.
+  bootstrap:
+    environment:
+      OIE_URL: https://engine:8443/api
+      OIE_INSECURE: "true"
+      OIE_ADMIN_PASSWORD: ${OIE_ADMIN_PASSWORD:?set OIE_ADMIN_PASSWORD in .env}
+
+secrets:
+  keystore.jks:
+    # Produced once by ./scripts/oie-cluster-keystore.sh and read by every
+    # engine through KEYSTORE_SOURCE.
+    file: ./secrets/keystore.jks

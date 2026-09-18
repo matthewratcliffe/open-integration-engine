@@ -1,0 +1,17 @@
+# Shell scripts run inside Linux containers: CRLF would break the shebang.
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+
+# Keep container and CI config LF too.
+Dockerfile text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.conf text eol=lf
+.env.example text eol=lf
+
+# Channel exports are XML; normalise so diffs are readable.
+*.xml text eol=lf
+
+# HL7 sample templates: LF in git, normalised to HL7 carriage returns when a
+# message is generated, so the files stay readable and diffable here.
+*.hl7 text eol=lf

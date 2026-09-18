@@ -1,0 +1,10 @@
+{
+    "id": "connector-nullsender",
+    "name": "Null Connector",
+    "version": "0.1.0",
+    "author": "This repository",
+    "description": "Connector settings panel for the Null Sender: a destination that records and acknowledges every message and delivers nowhere.",
+    "enabled": true,
+    "oie": { "apiMin": "4.6" },
+    "client": { "entry": "web/plugin.js" }
+}

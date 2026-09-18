@@ -1,0 +1,22 @@
+<pluginMetaData path="volumemonitor">
+    <name>Volume Monitor</name>
+    <author>This repository</author>
+    <pluginVersion>@PLUGIN_VERSION@</pluginVersion>
+    <!--
+      Exact string match against the server version, split on commas. An
+      extension declaring anything else is refused outright by ExtensionLoader
+      and silently not loaded, so build.sh stamps this from MIRTH_VERSION.
+    -->
+    <mirthVersion>@MIRTH_VERSION@</mirthVersion>
+    <url>https://openintegrationengine.org</url>
+    <description>Watches how many messages each channel receives and reports a fault when a channel falls below an expected volume over a rolling window. Per-channel rules with active hours; breaches appear in the web administrator, in the engine event log and in the server log.</description>
+
+    <serverClasses>
+        <string>org.openintegrationengine.plugins.volumemonitor.VolumeMonitorServicePlugin</string>
+    </serverClasses>
+
+    <library type="SERVER" path="libs/volumemonitor-server.jar" />
+
+    <apiProvider type="SERVLET_INTERFACE" name="org.openintegrationengine.plugins.volumemonitor.VolumeMonitorServletInterface" />
+    <apiProvider type="SERVER_CLASS" name="org.openintegrationengine.plugins.volumemonitor.VolumeMonitorServlet" />
+</pluginMetaData>
