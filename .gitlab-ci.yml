@@ -1,0 +1,134 @@
+stages: [validate, package, plan, deploy]
+
+variables:
+  OIE_VERSION: "4.6.0"
+  OIE_SHA256: "7c82e79027e671277e1d78d0f7bbb1c53ddf1be476f1e80c2ddbfcf7855900ea"
+  IMAGE_TAG: "$CI_REGISTRY_IMAGE/oie:$CI_COMMIT_SHA"
+  TF_ROOT: "$CI_PROJECT_DIR/infra/aws"
+  TF_IN_AUTOMATION: "true"
+
+validate:
+  stage: validate
+  image: hashicorp/terraform:1.10
+  tags: [docker]
+  before_script:
+    - apk add --no-cache bash shellcheck
+  script:
+    - shellcheck scripts/*.sh
+    - terraform -chdir="$TF_ROOT" fmt -check -recursive
+    - terraform -chdir="$TF_ROOT" init -backend=false
+    - terraform -chdir="$TF_ROOT" validate
+
+build-image:
+  stage: package
+  image: docker:28-cli
+  services: [docker:28-dind]
+  tags: [docker]
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - docker build --build-arg "OIE_VERSION=$OIE_VERSION" --build-arg "OIE_SHA256=$OIE_SHA256" -t "$IMAGE_TAG" docker
+    - docker push "$IMAGE_TAG"
+  rules: [{if: '$CI_COMMIT_BRANCH'}]
+
+.aws-oidc:
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: "https://$CI_SERVER_HOST"
+  before_script:
+    - apk add --no-cache aws-cli jq
+    - export AWS_REGION="${AWS_REGION:-ap-southeast-2}"
+    - CREDS=$(aws sts assume-role-with-web-identity --role-arn "$AWS_DEPLOY_ROLE_ARN" --role-session-name "gitlab-$CI_PIPELINE_ID-$CI_JOB_ID" --web-identity-token "$GITLAB_OIDC_TOKEN")
+    - export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r .Credentials.AccessKeyId)
+    - export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r .Credentials.SecretAccessKey)
+    - export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r .Credentials.SessionToken)
+
+push-ecr:
+  extends: .aws-oidc
+  stage: package
+  image: docker:28-cli
+  services: [docker:28-dind]
+  tags: [docker]
+  needs: [build-image]
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - aws ecr get-login-password | docker login --username AWS --password-stdin "${AWS_ECR_REPOSITORY_URL%%/*}"
+    - docker pull "$IMAGE_TAG"
+    - docker tag "$IMAGE_TAG" "$AWS_ECR_REPOSITORY_URL:$CI_COMMIT_SHA"
+    - docker push "$AWS_ECR_REPOSITORY_URL:$CI_COMMIT_SHA"
+  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
+
+.terraform-plan:
+  extends: .aws-oidc
+  stage: plan
+  image: hashicorp/terraform:1.10
+  tags: [docker]
+  needs: [push-ecr]
+  script:
+    - printf '%s' "$AWS_SHARED_OUTPUTS_JSON" > "$TF_ROOT/shared-outputs.json"
+    - export SECRET_NAME="au-$DEPLOY_ENV-oie-secrets"
+    - jq -nc --arg a "$OIE_ADMIN_PASSWORD" --arg k "$KEYSTORE_PASSWORD" --arg j "$OIE_KEYSTORE_B64" '{OIE_ADMIN_PASSWORD:$a,KEYSTORE_PASSWORD:$k,KEYSTORE_BASE64:$j}' > /tmp/oie-secret.json
+    - aws secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&1 || aws secretsmanager create-secret --name "$SECRET_NAME" --secret-string file:///tmp/oie-secret.json >/dev/null
+    - aws secretsmanager put-secret-value --secret-id "$SECRET_NAME" --secret-string file:///tmp/oie-secret.json >/dev/null
+    - export TF_VAR_app_secret_arn=$(aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --query ARN --output text)
+    - export TF_VAR_rds_endpoint="$RDS_ENDPOINT" TF_VAR_rds_database_name="$RDS_DATABASE_NAME"
+    - export TF_VAR_rds_secret_arn="$RDS_SECRET_ARN" TF_VAR_rds_security_group_id="$RDS_SECURITY_GROUP_ID"
+    - export TF_VAR_region="$AWS_REGION" TF_VAR_environment="$DEPLOY_ENV" TF_VAR_image_tag="$CI_COMMIT_SHA"
+    - export TF_VAR_shared_outputs_path="$TF_ROOT/shared-outputs.json" TF_VAR_admin_host_header="$OIE_HOSTNAME"
+    - export TF_VAR_alb_listener_rule_priority="$AWS_ALB_PRIORITY" TF_VAR_channel_ingress_cidrs="$AWS_NLB_SUBNET_CIDRS_JSON"
+    - terraform -chdir="$TF_ROOT" init -backend-config="bucket=$AWS_TF_STATE_BUCKET" -backend-config="key=oie/$DEPLOY_ENV.tfstate" -backend-config="region=$AWS_REGION" -backend-config="dynamodb_table=$AWS_TF_LOCK_TABLE"
+    - terraform -chdir="$TF_ROOT" plan -out="$CI_PROJECT_DIR/$DEPLOY_ENV.tfplan"
+  artifacts:
+    paths: ["$DEPLOY_ENV.tfplan", "infra/aws/.terraform", "infra/aws/.terraform.lock.hcl", "infra/aws/shared-outputs.json"]
+    expire_in: 1 day
+
+.terraform-apply:
+  extends: .aws-oidc
+  stage: deploy
+  image: hashicorp/terraform:1.10
+  tags: [docker]
+  script:
+    - terraform -chdir="$TF_ROOT" init -input=false -backend-config="bucket=$AWS_TF_STATE_BUCKET" -backend-config="key=oie/$DEPLOY_ENV.tfstate" -backend-config="region=$AWS_REGION" -backend-config="dynamodb_table=$AWS_TF_LOCK_TABLE"
+    - terraform -chdir="$TF_ROOT" apply -auto-approve "$CI_PROJECT_DIR/$DEPLOY_ENV.tfplan"
+    - terraform -chdir="$TF_ROOT" output existing_nlb_listener_requirements
+
+plan-aws-staging:
+  extends: .terraform-plan
+  variables: {DEPLOY_ENV: staging, OIE_HOSTNAME: "$OIE_STAGING_HOSTNAME"}
+  environment: {name: staging, action: prepare}
+  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
+
+deploy-aws-staging:
+  extends: .terraform-apply
+  needs: [plan-aws-staging]
+  variables: {DEPLOY_ENV: staging}
+  environment: {name: staging, url: "https://$OIE_STAGING_HOSTNAME"}
+  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
+
+plan-aws-production:
+  extends: .terraform-plan
+  needs: [deploy-aws-staging]
+  variables: {DEPLOY_ENV: production, OIE_HOSTNAME: "$OIE_PRODUCTION_HOSTNAME"}
+  environment: {name: production, action: prepare}
+  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
+
+deploy-aws-production:
+  extends: .terraform-apply
+  needs: [plan-aws-production]
+  variables: {DEPLOY_ENV: production}
+  environment: {name: production, url: "https://$OIE_PRODUCTION_HOSTNAME"}
+  when: manual
+  allow_failure: false
+  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
+
+deploy-local-k8s:
+  stage: deploy
+  image: alpine:3.22
+  tags: [docker]
+  needs: [build-image]
+  before_script:
+    - apk add --no-cache bash kubectl
+  script:
+    - bash scripts/oie-deploy-local-k8s.sh
+  environment: {name: local-k8s}
+  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]

@@ -29,3 +29,8 @@ plugins/*/dist/
 test/fixtures/channels/fhir-listener-fixture.xml
 test/fixtures/channels/fhir-sender-fixture.xml
 test/fixtures/channels/sftp-sender-fixture.xml
+
+# Terraform working data and fetched shared outputs
+**/.terraform/
+*.tfplan
+infra/aws/shared-outputs.json
