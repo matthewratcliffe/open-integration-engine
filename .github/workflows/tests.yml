@@ -165,6 +165,12 @@ jobs:
           yamllint -d '{extends: relaxed, rules: {line-length: disable}}' \
             compose*.yaml deploy/k8s/*.yaml .github/workflows/*.yml
       - name: docker compose config parses
+        # POSTGRES_PASSWORD/OIE_ADMIN_PASSWORD are the two required variables
+        # (see .env.example); there is no .env in CI, so supply throwaway
+        # values just to let interpolation succeed.
+        env:
+          POSTGRES_PASSWORD: ci-throwaway
+          OIE_ADMIN_PASSWORD: ci-throwaway-admin
         run: docker compose -f compose.yaml config >/dev/null
 
   integration:
