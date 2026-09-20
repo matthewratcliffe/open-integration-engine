@@ -188,9 +188,12 @@ unzip -p <ext>.zip '*/plugin.xml' | grep mirthVersion
 a UI with the console. TLS Manager originally did not appear there — it ships a
 standalone WAR, not a console plugin — so this repo supplies the missing console
 half and the list now includes it: `["sftp","fhir","volumemonitor","gitsync","sentinel",
-"ssouserguard","tls-manager","oidcauth","nullsender","thread-viewer","keystore",
-"generator"]` on this stack, community extensions and the ones built from `plugins/`
-alike.
+"ssouserguard","tls-manager","cluster","oidcauth","nullsender","updatecheck",
+"nodemonitor","thread-viewer","keystore","generator"]` on this stack, community
+extensions and this stack's own first-party plugins alike — the latter now
+fetched from their own repos and baked into the image at build time via
+`OIE_BUILTIN_PLUGIN_URLS` (see `docker/Dockerfile`) rather than built from
+`plugins/` in this repo.
 
 **The list is built at engine startup, not per request**, so a newly installed console
 plugin needs a restart before the console will serve it — and since the image resets
@@ -201,7 +204,31 @@ all. Install the zip and restart.
 `serverClasses`, no jar, no `apiProvider`, just a `plugin.xml` carrying a `webadmin/`
 folder. The engine registers it like any other extension and loads nothing into its JVM,
 which makes it the cheapest way to add a console-only surface. See
-`plugins/oie-sso-user-guard/`.
+[`gibson9583/oie-sso-user-guard`](https://github.com/gibson9583/oie-sso-user-guard).
+
+### Two surfaces the console has no hook for
+
+The platform a plugin's `register(platform)` receives covers nav items, routed
+views, settings panels, channel and dashboard tabs, connector panels, commands
+and login authenticators. Two things this repo wanted are not in that list, and
+both are done by finding the element in the DOM instead:
+
+| | wants | finds |
+| --- | --- | --- |
+| `ssouserguard` | the Edit User dialog, to lock it for provider-managed accounts | `.modal-overlay [role="dialog"]` whose header begins *Edit User* |
+| `updatecheck` | the header, to put an "updates available" chip beside the version | `.server-chip` inside `header.topbar` |
+
+Both fail the same way, which is why the trade is acceptable: **if the console
+changes that markup the feature stops appearing**, and nothing else changes. No
+half-locked form, no chip in the wrong place, no broken header. The update
+check's page stays reachable from the sidebar and the command palette
+regardless, and the guard's dialog behaves exactly as it does without it.
+
+The chip additionally re-asserts its position when the header re-renders: React
+owns that header's children and never removes a node it did not create, but it
+inserts its own relative to its own, so a foreign node can drift. Both belong
+upstream in `oie-web-client` as extension points — a header slot and a user-page
+hook — and this is what they look like until then.
 
 ### Putting TLS Manager in the console sidebar
 

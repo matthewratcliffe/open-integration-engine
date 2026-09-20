@@ -176,11 +176,14 @@ someone spends an afternoon on it:
   provider, not here.
 - **The Edit User dialog lies about it by default.** The console lets an administrator
   type into those fields and save them, with no hint that they are about to be reverted.
-  `plugins/oie-sso-user-guard/` is this repository's answer: a console-only extension that
-  makes the dialog read-only for provider-managed accounts and says why. It recognises
-  them by the `oidc.subject` user preference the extension binds them with, so it needs no
-  configuration. See its README for how it hooks in and how it fails — safely, by leaving
-  the dialog exactly as it is today.
+  [`oie-sso-user-guard`](https://github.com/gibson9583/oie-sso-user-guard) is this
+  stack's answer: a console-only extension that makes the dialog read-only for
+  provider-managed accounts and says why. It recognises them by the
+  `oidc.subject` user preference the extension binds them with, so it needs no
+  configuration. It is one of this stack's 12 first-party plugins, baked into
+  the engine image at build time via `OIE_BUILTIN_PLUGIN_URLS` (see
+  `docker/Dockerfile`). See its README for how it hooks in and how it fails —
+  safely, by leaving the dialog exactly as it is today.
 
 Neither is enforcement: the REST API and the Swing Administrator still accept an edit to
 an SSO account, and the engine still stores it, until the next sign-in overwrites it.

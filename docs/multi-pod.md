@@ -12,11 +12,13 @@ it. Two engines writing into the same channel's tables is not a collision, it is
 the schema working as designed.
 
 What is missing is the control plane — the part that tells the other engines a
-deployment happened. That is what `plugins/oie-cluster` adds, and what this
-document explains.
+deployment happened. That is what
+[`oie-cluster`](https://github.com/gibson9583/oie-cluster) adds, and what this
+document explains. It is one of this stack's 12 first-party plugins, baked into
+the engine image at build time via `OIE_BUILTIN_PLUGIN_URLS` (see
+`docker/Dockerfile`) rather than built from source in this repo.
 
 ```
-plugins/oie-cluster/        the extension: intent, convergence, the Cluster view
 compose.cluster.yaml        three engines and a round-robin front door, locally
 deploy/k8s/                 the same shape as StatefulSets
 scripts/oie-cluster-keystore.sh   the shared keystore, which comes first
@@ -38,8 +40,9 @@ scripts/oie-cluster-keystore.sh   the shared keystore, which comes first
 
 ## What already works across instances
 
-Verified against the 4.6.0 jars in this repo (`plugins/*/build/libs/`) and the
-image it builds, not assumed:
+Verified against the 4.6.0 jars from the [`oie-cluster`](https://github.com/gibson9583/oie-cluster)
+and [`oie-node-monitor`](https://github.com/gibson9583/oie-node-monitor) repos
+and the image that bakes them in, not assumed:
 
 | | |
 | --- | --- |
@@ -283,7 +286,8 @@ and the console reaches those per node instead.
 
 **A console plugin** in `webadmin/`, the same shape as the existing ones — a
 `plugin.json` and a plain ES module calling `platform.registerNavItem`,
-`registerView` and `registerIcon`, exactly as `plugins/oie-volume-monitor` and the
+`registerView` and `registerIcon`, exactly as
+[`oie-volume-monitor`](https://github.com/gibson9583/oie-volume-monitor) and the
 `tls-manager` overlay do. It adds:
 
 - a **Cluster** view: one row per node (name, role, server id, version, uptime,
@@ -309,7 +313,7 @@ login and no service account to manage, because there are no node-to-node calls 
 the main path.
 
 **Node health is a second view, in a second extension.**
-[`plugins/oie-node-monitor`](../plugins/oie-node-monitor/) adds **Nodes**: per
+[`oie-node-monitor`](https://github.com/gibson9583/oie-node-monitor) adds **Nodes**: per
 engine, online or offline, uptime, CPU, heap, each disk it writes to, threads,
 what its channels are doing, and message volume with rates and an hour of
 history. It works the same way and for the same reason — each node samples
@@ -341,6 +345,12 @@ instead:
 ```
 OIE_SERVER_ID_STYLE=name     # oie-worker-1 rather than 0acc16de-d7e2-5...
 ```
+
+The name is taken from `OIE_SERVER_ID_FROM`, else `OIE_CLUSTER_NODE_NAME`, else
+the container's hostname — in that order, because in compose the hostname is the
+container id and changes on every recreate, while in Kubernetes all three are the
+pod name. Anything outside `[A-Za-z0-9._-]` becomes a dash and the result is cut
+to the 36 characters the column holds.
 
 Every message written from then on is stamped `oie-worker-1`, and the column
 reads that, in the web console, in the Swing Administrator, and in any query
@@ -402,7 +412,7 @@ applying them. The shape:
 | | |
 | --- | --- |
 | **Workload** | `StatefulSet` for both roles — stable ordinals give stable `server.id`s. `podManagementPolicy: OrderedReady` so pod-0 runs the schema migration before the others start; that is the whole answer to the first-boot race. |
-| **Services** | `oie-admin` (8443, ingress, round robin — no session affinity needed); `oie-channels` (one port per listener); `oie-headless` for per-node addressing. |
+| **Services** | `oie-admin` (8443, ingress, round robin — no session affinity needed, though the utility-only extension panels then render only on the utility pod; pin to `component: utility` if that matters); `oie-channels` (one port per listener); `oie-headless` for per-node addressing. |
 | **Probes** | Liveness: `GET /api/server/status`, which is unauthenticated and already the image's `HEALTHCHECK`. Readiness for the **channels** service: a TCP probe on a listener port — the port is open only when the channel is deployed, which is exactly the question being asked. Readiness for the **admin** service: the same status endpoint. |
 | **Rollout** | `RollingUpdate`, one pod at a time, `maxUnavailable: 1`. A pod takes 60–90s to boot and converge, so plan for N−1 capacity during an update and keep a `PodDisruptionBudget` of `minAvailable: N-1`. |
 | **Shutdown** | `terminationGracePeriodSeconds: 120`, matching the existing `stop_grace_period: 2m`. Kubernetes removes the pod from endpoints before SIGTERM; the engine stops channels and drains in-flight messages. Queued messages that remain stay owned by that `server.id` and are picked up when the pod returns. |
@@ -447,10 +457,14 @@ operator can see.
 
 ## What is built
 
+Both are first-party plugins built from their own repos, not from `plugins/`
+in this repo — baked into the engine image at build time via
+`OIE_BUILTIN_PLUGIN_URLS` (see `docker/Dockerfile`):
+
 | | |
 | --- | --- |
-| `plugins/oie-cluster/` | the extension: the intent hook, the convergence agent, `/api/cluster/*`, and the Cluster view in the web console |
-| `plugins/oie-node-monitor/` | the Nodes view: each engine's health, resource use and throughput, sampled into the shared database |
+| [`gibson9583/oie-cluster`](https://github.com/gibson9583/oie-cluster) | the extension: the intent hook, the convergence agent, `/api/cluster/*`, and the Cluster view in the web console |
+| [`gibson9583/oie-node-monitor`](https://github.com/gibson9583/oie-node-monitor) | the Nodes view: each engine's health, resource use and throughput, sampled into the shared database |
 | `docker/entrypoint.sh` | `KEYSTORE_SOURCE`, `OIE_DISABLE_EXTENSIONS`, a derived `server.id`, `JETTY_WORKER_INSTANCE` |
 | `scripts/oie-cluster-keystore.sh` | the shared keystore, taken off a started engine |
 | `compose.cluster.yaml` + `proxy/cluster-lb.conf` | three engines and a round-robin front door, locally |
@@ -478,8 +492,9 @@ default than at-least-once nobody asked for.
 
 Everything in the first two tables is read out of the 4.6.0 jars. The cluster
 itself was run: three engines (one utility, two workers) against one PostgreSQL
-behind an nginx round-robin front door, on this repository's own
-`compose.cluster.yaml`.
+behind an nginx front door, on this repository's own `compose.cluster.yaml` —
+round robin for channel traffic, pinned to the utility node for the admin
+console so the utility-only extension panels always have a backend.
 
 **Verified end to end**
 
@@ -506,6 +521,24 @@ behind an nginx round-robin front door, on this repository's own
 - Restarting that node made it deploy the channel from intent, with
   `SERVER_STARTUP_DEPLOY=false`, so the cluster was the only thing that could have
   told it to.
+- **Named server ids reach the message rows.** With `OIE_SERVER_ID_STYLE=name`
+  and the three nodes restarted onto empty `server.id` files, traffic through the
+  front door landed as:
+
+  ```
+  D_M1   (the message)          local-utility 27   local-w1 19
+  D_MM1  metadata 0 = source    local-utility 27   local-w1 19
+  D_MM1  metadata 1 = Dest 1    local-utility 27   local-w1 19
+  ```
+
+  So the message browser's Server Id column reads `local-w1` on the message and
+  on each destination, rather than a UUID. Older messages keep the ids they were
+  written with, which is the honest outcome: the column says which engine handled
+  that message, and for those it was an engine with a UUID for a name.
+- **Retiring an identity.** The three old ids appeared in both registries as
+  offline; `/api/cluster/orphans` correctly reported nothing, because they own
+  processed messages and no queued work; and `POST /nodes/_forget` on each
+  extension removed them, leaving three named nodes.
 
 **Two bugs the run found**, both now fixed and both invisible without it:
 
@@ -524,7 +557,9 @@ behind an nginx round-robin front door, on this repository's own
   with `SESSION_STORE=true` and `server.api.sessioncache=none` and the front door
   does no affinity, but a console session was not deliberately bounced between
   nodes mid-use. Check that the `sessiondata` table is created and that clicking
-  around does not log you out.
+  around does not log you out. Note that `oie_admin` is now pinned to the utility
+  node, so this has to be exercised against the per-node ports
+  (18443/18444/18445) rather than through `:8443`.
 - **Encryption across the shared keystore.** Encrypt on one engine, read on
   another. Then confirm the negative — a pod with its own keystore *fails* — so
   the failure mode is understood before it is met by accident.

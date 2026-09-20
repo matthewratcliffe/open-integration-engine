@@ -1,0 +1,76 @@
+name: docker-build
+
+# Builds the engine image and pushes it to GHCR. Equivalent of .gitlab-ci.yml's
+# `build-image` job, translated from GitLab CI to GitHub Actions:
+#
+#   GitLab                          GitHub Actions
+#   ----------------------------    ----------------------------------------
+#   $CI_REGISTRY_IMAGE              ghcr.io/<owner>/engine
+#   $CI_REGISTRY_USER/PASSWORD      GITHUB_TOKEN (via docker/login-action)
+#   $CI_COMMIT_SHORT_SHA            ${{ github.sha }} (short form below)
+#   rules: changes: docker/**       paths filter below
+#   floating `latest` tag only      same: only pushed on the default branch
+#     on the default branch
+#
+# OIE_VERSION / OIE_SHA256 are the engine release pin -- see docker/Dockerfile.
+# Bump both together; the checksum comes from the release's own sha256sums
+# asset. OIE_BUILTIN_PLUGIN_URLS (this stack's 12 first-party plugins) has its
+# own default baked into the Dockerfile and is not overridden here.
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'docker/**'
+      - '.github/workflows/docker-build.yml'
+  workflow_dispatch:
+
+env:
+  OIE_VERSION: "4.6.0"
+  OIE_SHA256: "7c82e79027e671277e1d78d0f7bbb1c53ddf1be476f1e80c2ddbfcf7855900ea"
+  IMAGE: ghcr.io/${{ github.repository_owner }}/engine
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    name: Build and push engine image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ env.IMAGE }}:${{ env.OIE_VERSION }}-${{ steps.sha.outputs.short }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg "OIE_VERSION=${OIE_VERSION}" \
+            --build-arg "OIE_SHA256=${OIE_SHA256}" \
+            --tag "${IMAGE}:${OIE_VERSION}-${{ steps.sha.outputs.short }}" \
+            --tag "${IMAGE}:${OIE_VERSION}" \
+            ./docker
+          docker push "${IMAGE}:${OIE_VERSION}-${{ steps.sha.outputs.short }}"
+          docker push "${IMAGE}:${OIE_VERSION}"
+          # Only move the floating tag once the commit is on the default branch.
+          if [ "${{ github.ref_name }}" = "${{ github.event.repository.default_branch }}" ]; then
+            docker tag "${IMAGE}:${OIE_VERSION}-${{ steps.sha.outputs.short }}" "${IMAGE}:latest"
+            docker push "${IMAGE}:latest"
+          fi

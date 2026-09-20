@@ -85,6 +85,19 @@ x-cluster-engine: &cluster-engine
     OIE_EXTENSION_URLS: ${OIE_EXTENSION_URLS:-}
     OIE_DOWNLOAD_HEADER: ${OIE_DOWNLOAD_HEADER:-}
     OIE_EXTENSION_RETAG_VERSION: ${OIE_EXTENSION_RETAG_VERSION:-false}
+
+    # Set on every node, including the workers, and it is not in
+    # OIE_DISABLE_EXTENSIONS below. The update check claims the work through a
+    # shared timestamp in the configuration table before it makes a request, so
+    # three nodes make one request a day between them -- and every node's
+    # console can then answer from the shared result.
+    OIE_UPDATE_CHECK: ${OIE_UPDATE_CHECK:-true}
+    OIE_UPDATE_CHECK_API_BASE: ${OIE_UPDATE_CHECK_API_BASE:-}
+    OIE_UPDATE_CHECK_TOKEN: ${OIE_UPDATE_CHECK_TOKEN:-}
+    # Defaults to this stack's own 12 first-party plugins (baked into the image
+    # at build time via OIE_BUILTIN_PLUGIN_URLS -- see docker/Dockerfile) plus
+    # the community extensions installed via OIE_EXTENSION_URLS.
+    OIE_UPDATE_CHECK_EXTENSIONS: ${OIE_UPDATE_CHECK_EXTENSIONS:-Null Connector Service Plugin=gibson9583/oie-null-connector,Volume Monitor=gibson9583/oie-volume-monitor,Update Check=gibson9583/oie-update-check,SSO User Guard=gibson9583/oie-sso-user-guard,SFTP Connector=gibson9583/oie-sftp-connector,Random Generator Connector=gibson9583/oie-random-generator,Node Monitor=gibson9583/oie-node-monitor,Key Store=gibson9583/oie-key-store,Git Sync=gibson9583/oie-git-sync,FHIR Connector Service Plugin=gibson9583/oie-fhir-connector,Cluster=gibson9583/oie-cluster,Backup=gibson9583/oie-backup,Sentinel=gibson9583/oie-sentinel,Thread Viewer=gibson9583/engine-thread-viewer,OIDC Authentication=gibson9583/oie-oidc-auth}
     _MP_SERVER_API_XFRAMEOPTIONS: ${API_XFRAME_OPTIONS:-SAMEORIGIN}
     _MP_SERVER_API_CONTENTSECURITYPOLICY: ${API_CSP:-frame-ancestors 'self'}
     OIE_HEAP_MAX: ${OIE_HEAP_MAX:-1g}

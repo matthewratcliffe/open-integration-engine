@@ -172,7 +172,7 @@ verify_channel_deployed() {
 #
 # Reads /api/cluster/status, which every node serves and which answers for all
 # of them out of the shared database. Rows are tab-separated (see Tsv.java in
-# plugins/oie-cluster), and the fields used here are:
+# https://github.com/gibson9583/oie-cluster), and the fields used here are:
 #
 #   1 channelId   2 name   ... 11 converged   12 expected   13 errors
 wait_for_cluster() {

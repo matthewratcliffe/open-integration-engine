@@ -1,8 +1,0 @@
-MSH|^~\&|${message.sendingApplication}|${message.sendingFacility}|${message.receivingApplication}|${message.receivingFacility}|${message.datetime}||${message.type}^${message.event}^${message.structure}|${message.controlId}|${message.processingId}|${message.version}|||AL|NE|AU|UNICODE UTF-8
-PID|1||${patient.mrn}^^^${message.sendingFacility}^MR~${patient.medicare}^^^AUSHIC^MC||${patient.family}^${patient.given}^${patient.middle}^^${patient.prefix}||${patient.dob}|${patient.sex}|||${patient.street}^^${patient.suburb}^${patient.state}^${patient.postcode}^AUS^H||${patient.phone}^PRN^PH~${patient.mobile}^PRN^CP|||${patient.maritalStatus}||${patient.accountNumber}
-PV1|1|${visit.class}|${visit.location}|${visit.admitType}|||${visit.attending.xcn}|${visit.referring.xcn}||${visit.hospitalService}|||||||${visit.attending.xcn}||${visit.number}|${visit.financialClass}||||||||||||||||||||||||${visit.admitTime}
-ORC|RE|${random.digits:8}^${message.sendingApplication}|${random.digits:8}^LAB
-OBR|1|${random.digits:8}^${message.sendingApplication}|${random.digits:8}^LAB|FBC^Full Blood Count^L|||${date.offset:-2h}|||||||${date.offset:-2h}||${visit.attending.xcn}||||||${message.datetime}|||F
-OBX|1|NM|HGB^Haemoglobin^L||${random.int:95-175}|g/L|115-165|${random.pick:N,N,N,H,L}|||F|||${date.offset:-1h}
-OBX|2|NM|WCC^White Cell Count^L||${random.decimal:3.0-15.0,1}|10*9/L|4.0-11.0|${random.pick:N,N,N,H}|||F|||${date.offset:-1h}
-OBX|3|NM|PLT^Platelets^L||${random.int:120-450}|10*9/L|150-400|${random.pick:N,N,N,L}|||F|||${date.offset:-1h}

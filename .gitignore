@@ -22,3 +22,10 @@ secrets/*
 # Plugin build output
 plugins/*/build/
 plugins/*/dist/
+
+# Connector fixtures the integration job generates from the engine at run time
+# (test/fixtures/generate-fixtures.sh). The four committed exports are tracked;
+# the three generated ones are produced fresh each CI run.
+test/fixtures/channels/fhir-listener-fixture.xml
+test/fixtures/channels/fhir-sender-fixture.xml
+test/fixtures/channels/sftp-sender-fixture.xml

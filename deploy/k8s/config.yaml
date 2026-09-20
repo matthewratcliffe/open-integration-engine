@@ -32,6 +32,13 @@ data:
   # Sessions in PostgreSQL (Jetty's JDBCSessionDataStore over the engine's own
   # datasource), and no in-memory session cache in front of them. Together these
   # are what let the admin Service round-robin without session affinity.
+  #
+  # Affinity is not the only reason to pin, though: the utility-only extensions
+  # (git sync, data pruner, volume monitor) are absent from the workers, and
+  # their console panels render as unavailable on whichever pod the Service
+  # picks. compose.cluster.yaml resolves this by pinning its admin upstream to
+  # the utility node; here, pin the Service to `component: utility` or use
+  # `oie-headless` when you need those panels.
   SESSION_STORE: "true"
   _MP_SERVER_API_SESSIONCACHE: none
 
@@ -75,6 +82,17 @@ data:
   # JVM, so an artifact that changes under you is code execution inside it --
   # and in a cluster it is code execution on every node at once.
   OIE_EXTENSION_URLS: ""
+
+  # The update check: one outbound GET per watched project per day, for the
+  # whole cluster, to decide whether the console header should say an update
+  # exists. It installs nothing. "false" stops it making any request, and
+  # overrides the setting stored in the database -- set it that way for a
+  # cluster with no egress, or point OIE_UPDATE_CHECK_API_BASE at a mirror.
+  OIE_UPDATE_CHECK: "true"
+  OIE_UPDATE_CHECK_API_BASE: ""
+  # Extra extensions to watch, as "<extension name>=<owner>/<repo>", comma
+  # separated -- e.g. "Sentinel=gibson9583/oie-sentinel".
+  OIE_UPDATE_CHECK_EXTENSIONS: ""
 ---
 # The secrets this stack needs, as a template. Do not commit real values; create
 # them with kubectl, or point an external secrets operator at these names.
@@ -90,6 +108,11 @@ data:
 # KEYSTORE_PASSWORD must be the one the keystore was created with and must be
 # the same on every node. Changing it after the first boot makes the existing
 # keystore unreadable, which means losing anything encrypted with that key.
+#
+# OIE_UPDATE_CHECK_TOKEN belongs here too if the release feed needs one (a
+# private mirror, or a shared egress address that has used up the anonymous
+# rate limit). It is read from the environment and never stored or returned by
+# the API, so it does not belong in the ConfigMap above.
 apiVersion: v1
 kind: Secret
 metadata:

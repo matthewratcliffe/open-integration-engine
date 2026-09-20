@@ -20,13 +20,46 @@ ARG OIE_SHA256=7c82e79027e671277e1d78d0f7bbb1c53ddf1be476f1e80c2ddbfcf7855900ea
 # internal artifact mirror). Leave empty to use the canonical release URL.
 ARG OIE_TARBALL_URL=
 
+# This stack's own first-party plugins (formerly built from source under
+# plugins/ in this repo, now each its own GitHub repo). Baked into the image at
+# BUILD time so they behave like the bundled engine, surviving the entrypoint's
+# per-boot restore of extensions/ from extensions.dist/ (see docker/entrypoint.sh).
+#
+# Contrast this with OIE_EXTENSION_URLS in docker/entrypoint.sh, which fetches
+# extensions at container STARTUP: that mechanism exists for licensed/optional
+# third-party extensions (Zen SSL, Sentinel, the web administrator, ...) that an
+# operator opts into per-environment and may need to rotate without a rebuild.
+# These 12 plugins are required parts of this stack, not optional add-ons, so
+# they are fetched once at build time and shipped as part of the immutable
+# pristine copy, exactly like the engine release itself above.
+#
+# Format matches OIE_EXTENSION_URLS: comma-separated sha256:<hex>@<url> entries.
+#
+# TODO: every checksum below is a placeholder (repeated zeros) and every
+# version is a placeholder (0.1.0) because none of these 12 repos has cut a
+# real release yet. Replace both once each repo's first release is tagged --
+# take the checksum from that release's own sha256sums/SHA256SUMS asset, the
+# same way OIE_SHA256 above is sourced for the engine itself.
+ARG OIE_BUILTIN_PLUGIN_URLS="sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-null-connector/releases/download/v0.1.0/nullsender-0.1.0.zip,\
+sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-volume-monitor/releases/download/v0.1.0/volumemonitor-0.1.0.zip,\
+sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-update-check/releases/download/v0.1.0/updatecheck-0.1.0.zip,\
+sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-sso-user-guard/releases/download/v0.1.0/ssouserguard-0.1.0.zip,\
+sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-sftp-connector/releases/download/v0.1.0/sftp-0.1.0.zip,\
+sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-random-generator/releases/download/v0.1.0/generator-0.1.0.zip,\
+sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-node-monitor/releases/download/v0.1.0/nodemonitor-0.1.0.zip,\
+sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-key-store/releases/download/v0.1.0/keystore-0.1.0.zip,\
+sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-git-sync/releases/download/v0.1.0/gitsync-0.1.0.zip,\
+sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-fhir-connector/releases/download/v0.1.0/fhir-0.1.0.zip,\
+sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-cluster/releases/download/v0.1.0/cluster-0.1.0.zip,\
+sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-backup/releases/download/v0.1.0/backup-0.1.0.zip"
+
 # Trim the Administrator client jars (~82MB, only needed if operators launch the
 # Administrator GUI from this server) and the mccommand CLI (~32MB, superseded
 # by the REST API for config management).
 ARG INCLUDE_ADMIN_CLIENT=true
 ARG INCLUDE_CLI=false
 
-RUN apk add --no-cache curl tar
+RUN apk add --no-cache curl tar unzip
 
 RUN set -eu; \
     url="${OIE_TARBALL_URL}"; \
@@ -44,6 +77,35 @@ RUN set -eu; \
     tar -xzf /tmp/oie.tar.gz -C /opt/engine --strip-components=1; \
     rm /tmp/oie.tar.gz
 
+# Fetch this stack's own first-party plugins and unpack them straight into
+# extensions.dist/, so they ship baked into the pristine copy below and behave
+# like bundled extensions on every boot (see OIE_BUILTIN_PLUGIN_URLS comment
+# above for why this is a build-time step rather than the entrypoint's
+# runtime OIE_EXTENSION_URLS mechanism).
+RUN set -eu; \
+    mkdir -p /opt/engine/extensions; \
+    idx=0; \
+    for entry in $(echo "${OIE_BUILTIN_PLUGIN_URLS}" | tr ',' ' '); do \
+        idx=$((idx + 1)); \
+        [ -n "$entry" ] || continue; \
+        case "$entry" in \
+            sha256:*) \
+                expected="${entry#sha256:}"; expected="${expected%%@*}"; \
+                url="${entry#sha256:${expected}@}" ;; \
+            *) \
+                expected=""; url="$entry" ;; \
+        esac; \
+        echo "Fetching built-in plugin ${idx} from ${url}"; \
+        curl --fail --silent --show-error --location --retry 3 -o "/tmp/plugin-${idx}.zip" "$url"; \
+        if [ -n "$expected" ] && [ "$expected" != "0000000000000000000000000000000000000000000000000000000000000000" ]; then \
+            echo "${expected}  /tmp/plugin-${idx}.zip" | sha256sum -c -; \
+        else \
+            echo "WARNING: no real checksum pinned for built-in plugin ${idx} (${url}) -- placeholder, fill in once a release is cut" >&2; \
+        fi; \
+        unzip -o -q "/tmp/plugin-${idx}.zip" -d /opt/engine/extensions; \
+        rm "/tmp/plugin-${idx}.zip"; \
+    done
+
 RUN set -eu; \
     cd /opt/engine; \
     # Windows / service launchers are dead weight in a Linux container.
@@ -52,6 +114,7 @@ RUN set -eu; \
     if [ "${INCLUDE_ADMIN_CLIENT}" != "true" ]; then rm -rf client-lib; fi; \
     # Pristine copies: the entrypoint rebuilds conf/ and extensions/ from these on
     # every boot so the running config is a pure function of the environment.
+    # extensions/ already includes the built-in plugins fetched above.
     cp -a conf conf.dist; \
     cp -a extensions extensions.dist; \
     # webapps/ is where MirthWebServer scans for *.war at startup and mounts

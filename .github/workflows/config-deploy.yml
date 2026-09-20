@@ -1,0 +1,234 @@
+name: config-deploy
+
+# Validates config/ against a disposable engine and pushes it to real
+# environments. Equivalent of .gitlab-ci.yml's `validate` and `deploy` stages,
+# translated to GitHub Actions:
+#
+#   GitLab                              GitHub Actions
+#   ---------------------------------   ------------------------------------
+#   stage: validate (validate-config)   job: validate-config
+#   stage: validate (lint-config)       job: lint-config
+#   stage: deploy (deploy-staging)      job: deploy-staging, environment: staging
+#   stage: deploy (deploy-production,   job: deploy-production, environment:
+#     when: manual)                       production (a GitHub Environment with
+#                                          required reviewers is the manual gate)
+#   CI/CD variables (masked)            repository/environment secrets
+#
+# Runs on push to main via workflow_run, once docker-build.yml has produced and
+# pushed the image this validates and deploys -- so the tag it validates is
+# exactly the tag it will push to production, never a locally rebuilt one.
+#
+# Secrets to set (Settings > Secrets and variables > Actions), plus per the
+# same names as environment secrets on "staging" / "production" for the URL +
+# password pairs:
+#   OIE_STAGING_URL, OIE_STAGING_PASSWORD, OIE_PROD_URL, OIE_PROD_PASSWORD
+#   DOWNSTREAM_FHIR_URL, DOWNSTREAM_FHIR_TOKEN (config/configuration-map.properties)
+#   OIE_EXTENSION_URLS, OIE_DOWNLOAD_HEADER, OIE_REQUIRED_EXTENSIONS  (licensed
+#     extensions the channels' connectors depend on, so the throwaway validate
+#     engine can deserialise those channels)
+#   OIE_CLIENT_CERT, OIE_CLIENT_KEY, OIE_CACERT (mTLS proxy, in place of
+#     OIE_INSECURE)
+
+on:
+  pull_request:
+    paths:
+      - 'config/**'
+  workflow_run:
+    workflows: ["docker-build"]
+    types: [completed]
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  OIE_VERSION: "4.6.0"
+
+jobs:
+  # Cheap syntax gate that needs no engine, so a config-only PR gets feedback
+  # even without an image build.
+  lint-config:
+    name: Lint config XML
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y libxml2-utils
+      - name: Channel XML well-formedness, ids, duplicates
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=0
+          for f in config/channels/*.xml; do
+            [ -e "$f" ] || continue
+            xmllint --noout "$f" || { echo "$f: not well-formed XML"; status=1; continue; }
+            id=$(xmllint --xpath 'string(/channel/id)' "$f" 2>/dev/null || true)
+            if [ -z "$id" ]; then
+              echo "$f: no /channel/id -- export the channel from the Administrator"
+              status=1
+            fi
+          done
+          dupes=$(xmllint --xpath '//channel/id/text()' config/channels/*.xml 2>/dev/null \
+                  | tr -d ' ' | sort | uniq -d || true)
+          if [ -n "$dupes" ]; then
+            echo "duplicate channel ids across config/channels: $dupes"
+            status=1
+          fi
+          exit $status
+
+  validate-config:
+    name: Validate config against a disposable engine
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    services:
+      db:
+        image: postgres:18.3-alpine
+        env:
+          POSTGRES_DB: mirthdb
+          POSTGRES_USER: mirthdb
+          POSTGRES_PASSWORD: ci-throwaway
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/engine
+      OIE_URL: "https://engine:8443/api"
+      OIE_INSECURE: "true"
+      OIE_ADMIN_PASSWORD: "ci-throwaway-admin"
+      OIE_PASSWORD: "ci-throwaway-admin"
+      DOWNSTREAM_FHIR_URL: ${{ secrets.DOWNSTREAM_FHIR_URL || 'https://fhir.invalid' }}
+      DOWNSTREAM_FHIR_TOKEN: ${{ secrets.DOWNSTREAM_FHIR_TOKEN || 'ci-placeholder' }}
+      OIE_EXTENSION_URLS: ${{ secrets.OIE_EXTENSION_URLS }}
+      OIE_DOWNLOAD_HEADER: ${{ secrets.OIE_DOWNLOAD_HEADER }}
+      OIE_REQUIRED_EXTENSIONS: ${{ secrets.OIE_REQUIRED_EXTENSIONS }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Install client tools
+        run: sudo apt-get update && sudo apt-get install -y curl libxml2-utils
+
+      - name: Short SHA of the build that triggered this run
+        id: sha
+        run: echo "short=${sha::8}" >> "$GITHUB_OUTPUT"
+        env:
+          sha: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start the disposable engine (the exact image docker-build just pushed)
+        run: |
+          docker network create oie-ci
+          docker run -d --name db --network oie-ci --network-alias db \
+            -e POSTGRES_DB=mirthdb -e POSTGRES_USER=mirthdb -e POSTGRES_PASSWORD=ci-throwaway \
+            postgres:18.3-alpine
+          docker pull "${IMAGE}:${OIE_VERSION}-${{ steps.sha.outputs.short }}"
+          docker run -d --name engine --network oie-ci --network-alias engine \
+            -p 127.0.0.1:8443:8443 \
+            -e DATABASE=postgres \
+            -e DATABASE_URL=jdbc:postgresql://db:5432/mirthdb \
+            -e DATABASE_USERNAME=mirthdb \
+            -e DATABASE_PASSWORD=ci-throwaway \
+            -e DATABASE_MAX_RETRY=30 -e DATABASE_RETRY_WAIT=3000 \
+            -e KEYSTORE_STOREPASS=ci-throwaway -e KEYSTORE_KEYPASS=ci-throwaway \
+            -e OIE_HEAP_MAX=768m \
+            -e SERVER_STARTUP_DEPLOY=false \
+            -e OIE_EXTENSION_URLS="${OIE_EXTENSION_URLS}" \
+            -e OIE_DOWNLOAD_HEADER="${OIE_DOWNLOAD_HEADER}" \
+            "${IMAGE}:${OIE_VERSION}-${{ steps.sha.outputs.short }}"
+
+      - name: Bootstrap admin password
+        run: |
+          export OIE_URL="https://127.0.0.1:8443/api"
+          ./scripts/oie-bootstrap-admin.sh
+
+      - name: Assert required extensions loaded
+        run: |
+          export OIE_URL="https://127.0.0.1:8443/api"
+          ./scripts/oie-check-extensions.sh
+
+      - name: Push config/ and prove every channel deploys
+        run: |
+          export OIE_URL="https://127.0.0.1:8443/api"
+          ./scripts/oie-config-push.sh
+
+      - name: Engine logs on failure
+        if: failure()
+        run: docker logs engine 2>&1 | tail -200 || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker rm -f engine db 2>/dev/null || true
+          docker network rm oie-ci 2>/dev/null || true
+
+  deploy-staging:
+    name: Deploy to staging
+    needs: validate-config
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ secrets.OIE_STAGING_URL }}
+    env:
+      OIE_URL: ${{ secrets.OIE_STAGING_URL }}
+      OIE_PASSWORD: ${{ secrets.OIE_STAGING_PASSWORD }}
+      DOWNSTREAM_FHIR_URL: ${{ secrets.DOWNSTREAM_FHIR_URL }}
+      DOWNSTREAM_FHIR_TOKEN: ${{ secrets.DOWNSTREAM_FHIR_TOKEN }}
+      OIE_REQUIRED_EXTENSIONS: ${{ secrets.OIE_REQUIRED_EXTENSIONS }}
+      OIE_CLIENT_CERT: ${{ secrets.OIE_CLIENT_CERT }}
+      OIE_CLIENT_KEY: ${{ secrets.OIE_CLIENT_KEY }}
+      OIE_CACERT: ${{ secrets.OIE_CACERT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Install client tools
+        run: sudo apt-get update && sudo apt-get install -y curl libxml2-utils
+      - name: Assert required extensions present in staging
+        run: ./scripts/oie-check-extensions.sh
+      - name: Dry run
+        run: ./scripts/oie-config-push.sh --dry-run
+      - name: Push (staging mirrors config/ exactly, including removals)
+        run: ./scripts/oie-config-push.sh --prune
+
+  deploy-production:
+    name: Deploy to production
+    needs: validate-config
+    runs-on: ubuntu-latest
+    # The `production` GitHub Environment is this pipeline's equivalent of
+    # GitLab's `when: manual`: configure it (Settings > Environments >
+    # production) with required reviewers, so the job pauses for approval
+    # before it runs, same as a manual pipeline job would.
+    environment:
+      name: production
+      url: ${{ secrets.OIE_PROD_URL }}
+    env:
+      OIE_URL: ${{ secrets.OIE_PROD_URL }}
+      OIE_PASSWORD: ${{ secrets.OIE_PROD_PASSWORD }}
+      DOWNSTREAM_FHIR_URL: ${{ secrets.DOWNSTREAM_FHIR_URL }}
+      DOWNSTREAM_FHIR_TOKEN: ${{ secrets.DOWNSTREAM_FHIR_TOKEN }}
+      OIE_REQUIRED_EXTENSIONS: ${{ secrets.OIE_REQUIRED_EXTENSIONS }}
+      OIE_CLIENT_CERT: ${{ secrets.OIE_CLIENT_CERT }}
+      OIE_CLIENT_KEY: ${{ secrets.OIE_CLIENT_KEY }}
+      OIE_CACERT: ${{ secrets.OIE_CACERT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Install client tools
+        run: sudo apt-get update && sudo apt-get install -y curl libxml2-utils
+      - name: Assert required extensions present in production
+        run: ./scripts/oie-check-extensions.sh
+      - name: Dry run
+        run: ./scripts/oie-config-push.sh --dry-run
+      # No --prune in production: deleting a channel takes its message history
+      # with it, so removals are done deliberately rather than by omission.
+      - name: Push
+        run: ./scripts/oie-config-push.sh

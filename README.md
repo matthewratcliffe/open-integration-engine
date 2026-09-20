@@ -40,14 +40,15 @@ tag), and `bash`, `curl` and `xmllint` wherever you run the scripts.
 | `scripts/oie-api.sh` | thin curl wrapper, sourced by the others |
 | `scripts/gen-dev-certs.sh` | throwaway certs for testing the mTLS overlay |
 | `scripts/oie-cluster-keystore.sh` | extract the keystore every node in a cluster shares |
-| `plugins/` | engine extensions built from source here, each with its own README |
+| `docker/Dockerfile` (`OIE_BUILTIN_PLUGIN_URLS`) | this stack's 12 first-party plugins, each its own GitHub repo, fetched and baked into the image at build time |
 | `extensions/` | drop licensed extension zips here (e.g. Zen) |
 | `docs/web-ui.md` | enabling the browser-based web administrator |
 | `docs/mtls.md` | setting up mutual TLS, three ways |
 | `docs/sso.md` | single sign-on with Microsoft Entra ID, configured in the console |
 | `docs/multi-pod.md` | several engines behind one address, sharing config and deployments |
 | `scripts/oie-tls-import.sh` | import certificates into TLS Manager over the API |
-| `.gitlab-ci.yml` | build, validate against a disposable engine, deploy |
+| `.github/workflows/docker-build.yml` | build image, push to GHCR |
+| `.github/workflows/config-deploy.yml` | lint, validate against a disposable engine, deploy |
 
 ## Why the image is built rather than pulled
 
@@ -292,6 +293,36 @@ not through the Administrator's Extensions → Install.** A UI install writes in
 the container's `extensions/` directory, which this image resets from its
 pristine copy on the next boot, so it would silently disappear.
 
+### Knowing when there is an update
+
+[`oie-update-check`](https://github.com/gibson9583/oie-update-check) (baked
+into the image at build time, see `OIE_BUILTIN_PLUGIN_URLS` in
+`docker/Dockerfile`) puts a chip next to the version in the console header when
+a release you do not have has been published:
+
+```
+engine · local-utility · v4.6.0   ● 2 updates available
+```
+
+Clicking it opens an **Updates** page: what is running, what is published, and
+the steps for this stack with the versions and checksums already filled in — the
+`OIE_VERSION` and `OIE_SHA256` lines, the rebuild, the reminder that the 12
+first-party plugins pinned in `OIE_BUILTIN_PLUGIN_URLS` have to be re-pinned to
+builds that declare the new version because compatibility is an exact string
+match, and the `oie-check-extensions.sh` that tells you it worked. It watches
+the engine and the Web Support extension by default, and
+`OIE_UPDATE_CHECK_EXTENSIONS` adds the rest — the 12 first-party plugins and the
+community set — out of the box.
+
+**It installs nothing.** There is no button on that page that touches the
+engine. It is also the one thing in this stack that calls out on a timer: one
+request per watched project per day to `api.github.com`, for the whole cluster
+rather than per node, carrying nothing about this engine. `OIE_UPDATE_CHECK=false`
+stops it reaching the network at all and beats the setting stored in the
+database, so an egress-restricted deployment can refuse it from the deployment
+rather than from the data; `OIE_UPDATE_CHECK_API_BASE` points it at a mirror
+instead. See [`gibson9583/oie-update-check`](https://github.com/gibson9583/oie-update-check).
+
 ## Installing the Zen SSL extension
 
 With a licence you get HTTPS/TCPS/LLPS listeners and senders inside the engine,
@@ -345,9 +376,10 @@ environment missing the extension fails instead of quietly killing channels.
 
 **Your CI validate engine needs the extension too.** Once channels reference
 Zen's connector classes, any engine that receives them must have the extension
-installed — including the throwaway one in the validate stage. `.gitlab-ci.yml`
-passes `OIE_EXTENSION_URLS` and `OIE_DOWNLOAD_HEADER` through to it; point them
-at the same artifact your runtime environments use.
+installed — including the throwaway one in the validate stage.
+`.github/workflows/config-deploy.yml`'s `validate-config` job passes
+`OIE_EXTENSION_URLS` and `OIE_DOWNLOAD_HEADER` (from repository secrets)
+through to it; point them at the same artifact your runtime environments use.
 
 **The licence key lives in PostgreSQL.** Extension settings are saved through
 `configurationController.saveProperty()` into the `configuration` table, not a
@@ -374,8 +406,10 @@ that need a keystore or client certificate chosen per partner.
 
 ## SFTP, both directions
 
-`plugins/oie-sftp-connector/` adds two connectors the engine does not otherwise
-have, built and installed like the others in `plugins/`:
+[`oie-sftp-connector`](https://github.com/gibson9583/oie-sftp-connector) adds
+two connectors the engine does not otherwise have, and like the other 12
+first-party plugins is baked into the image at build time (`OIE_BUILTIN_PLUGIN_URLS`
+in `docker/Dockerfile`) rather than built from source in this repo:
 
 | | |
 | --- | --- |
@@ -387,14 +421,15 @@ reason to reach for these is what they cannot do: run a server, and verify the
 far end's host key against a `known_hosts` file or a pinned key rather than
 trusting whatever answers. Both administrators have panels for them.
 
-See [`plugins/oie-sftp-connector/README.md`](plugins/oie-sftp-connector/README.md),
+See [`gibson9583/oie-sftp-connector`](https://github.com/gibson9583/oie-sftp-connector),
 which also covers why a connector extension has to register its own classes with
 the channel serializer — without that, a channel using it saves with a `200` and
 is stored as an invalid channel.
 
 ## Synthetic HL7 traffic
 
-`plugins/oie-random-generator/` adds a **Random Generator** source connector:
+[`oie-random-generator`](https://github.com/gibson9583/oie-random-generator)
+adds a **Random Generator** source connector:
 HL7 v2 messages manufactured on the polling schedule, for when the channel is
 ready and the upstream system is not.
 
@@ -417,7 +452,7 @@ patient. Every cell in it is optional: what you leave blank is filled from the
 invented patient at that position, so a row naming only an MRN still carries a
 stable address, next of kin and insurer.
 
-See [`plugins/oie-random-generator/README.md`](plugins/oie-random-generator/README.md)
+See [`gibson9583/oie-random-generator`](https://github.com/gibson9583/oie-random-generator)
 for the placeholder reference and the sample per message type.
 
 ## Running more than one engine
@@ -435,7 +470,8 @@ message, connector message and statistics row carries a `SERVER_ID`, and every
 queue, recovery and statistics query filters on it, so two engines in the same
 channel's tables is the schema working as designed. What is missing is the part
 that tells the other engines a deployment happened, and that is
-[`plugins/oie-cluster`](plugins/oie-cluster/): a deploy on any node — console,
+[`oie-cluster`](https://github.com/gibson9583/oie-cluster) (baked into the
+image at build time, see `docker/Dockerfile`): a deploy on any node — console,
 Swing Administrator, REST API, CI — becomes intent in the database, and every
 node converges on it within a few seconds.
 
@@ -459,7 +495,7 @@ the monitors — off the workers, through `OIE_DISABLE_EXTENSIONS`.
 
 The web console grows two views. **Cluster** shows what each node has deployed,
 message counts summed across them, and the queues left behind by a node that is
-gone. **Nodes** ([`plugins/oie-node-monitor`](plugins/oie-node-monitor/)) shows
+gone. **Nodes** ([`oie-node-monitor`](https://github.com/gibson9583/oie-node-monitor)) shows
 the health of each engine — online or offline, uptime, CPU, heap, disk per
 volume, threads, channel states and message volume with rates and an hour of
 history. Each node samples itself into the shared database, so any node's console
@@ -473,25 +509,102 @@ Kubernetes manifests are in [`deploy/k8s/`](deploy/k8s/). The design, the
 evidence behind each claim and what has and has not been verified are in
 [`docs/multi-pod.md`](docs/multi-pod.md).
 
-## GitLab CI
+### Which nodes receive messages
 
-`.gitlab-ci.yml` has three stages:
+Three different questions, and they do not have the same answer.
 
-1. **build** — build and push the image, checksum-pinned. The `latest` tag only
-   moves on the default branch.
-2. **validate** — start PostgreSQL and the freshly built engine as CI services,
-   bootstrap the admin password, and run the real push against them. This is
-   where a channel the server cannot deserialise fails, on a server nobody
-   depends on. A cheaper `lint-config` job checks XML well-formedness, missing
-   ids and duplicate ids without needing an engine.
-3. **deploy** — dry run, then push. Staging runs with `--prune`; production is
-   manual and does not prune.
+**Channels the utility node owns.** Always. A channel placed `SINGLETON` is
+deployed on the utility node and nowhere else, and its source polls or reads
+there — that is what the placement is for. Those messages are processed on the
+utility node with no front door involved.
 
-Variables to set, all masked: `OIE_STAGING_URL`, `OIE_STAGING_PASSWORD`,
-`OIE_PROD_URL`, `OIE_PROD_PASSWORD`, plus whatever
-`configuration-map.properties` references. Behind the mTLS proxy, add the client
-certificate and key as File-type variables and point `OIE_CLIENT_CERT` /
-`OIE_CLIENT_KEY` at them, with the CA in `OIE_CACERT` instead of `OIE_INSECURE`.
+**Inbound channel traffic through the front door.** In Kubernetes, the workers
+only: `oie-channels` selects `component: worker`, so `:8081` and `:6661` never
+reach the utility node, which leaves its headroom for the pollers and the
+pruner. In compose, all three: `proxy/cluster-lb.conf` lists `engine` — the
+utility node — in the channel upstreams alongside both workers, so traffic
+round-robins across every engine. The verified run in
+[`docs/multi-pod.md`](docs/multi-pod.md) is that difference showing up in the
+data: 27 of the messages pushed through the front door were handled by
+`local-utility`. To make the local stack mirror the manifests, drop the two
+`server engine:` lines from the `oie_channel_http` and `oie_channel_mllp`
+upstreams; the admin upstream is a separate question, below.
+
+**The admin API.** Every node serves it, and the console any node serves answers
+for the whole cluster — but the *panels* a console can render depend on which
+node answered. The utility-only extensions (git sync, data pruner, volume
+monitor) are stripped from the workers by `OIE_DISABLE_EXTENSIONS`, so a console
+served by a worker shows those as unavailable. In compose, `oie_admin` is
+therefore pinned to `engine`: one node, every panel. In Kubernetes the
+`oie-admin` Service still selects both roles, so the same panels are a coin toss
+there; pin the Service to `component: utility`, or reach the utility pod through
+`oie-headless`, if you need them.
+
+One consequence worth knowing before placing a channel: `SINGLETON` goes with a
+source that pulls — a File Reader, a Database Reader, a poller of any kind. A
+channel whose source is a *listener*, placed `SINGLETON` under Kubernetes, binds
+its port on the utility pod, which `oie-channels` does not route to; it listens
+and hears nothing. Listener-source channels want `ALL`.
+
+## Tests
+
+A full test suite runs in **GitHub Actions** ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)),
+independent of the build/validate/deploy pipeline below. Six tiers:
+
+- **js-unit** — `node --test` over any plugin- or overlay-side
+  `webadmin/web/plugin.js` pure logic (XStream decode/encode, TSV parsing,
+  formatting, validation) still tracked in this repo (the TLS Manager overlay,
+  for example), via a mirror module beside each test. The 12 first-party
+  plugins' own unit tests now live and run in their own repos.
+- **java-unit** — compiles and runs any dependency-free Java test still under
+  `plugins/` or `extensions/` in this repo; skips cleanly now that the 12
+  first-party plugins' Java tests live in their own repos.
+- **shell-unit** — `bats` over the pure logic in `docker/entrypoint.sh`
+  (`set_prop`, `_MP_*` mangling, `server.id` derivation, extension-URL checksum
+  parsing) and `scripts/oie-config-push.sh` (`${VAR}` expansion, XML escaping).
+- **shellcheck** / **lint-static** — every script, plus channel-XML
+  well-formedness, duplicate-id detection, YAML and `docker compose config`.
+- **integration** — builds the engine image (which fetches and bakes in the 12
+  first-party plugins via `OIE_BUILTIN_PLUGIN_URLS`, see `docker/Dockerfile`),
+  stands up PostgreSQL + the engine, then pushes the fixture channels in
+  `test/fixtures/` and the real `config/` and asserts none was stored as an
+  `InvalidChannel` and each reached a deployed state — the same invalid-channel
+  trap `oie-config-push.sh` guards against, on a throwaway engine.
+
+See [`test/README.md`](test/README.md) for how to run each tier locally, how the
+copied-mirror unit tests are kept in step with `plugin.js`, and which connector
+fixtures still need an Administrator export.
+
+## Build, validate, deploy (GitHub Actions)
+
+Two workflows split the same three stages the old GitLab pipeline had:
+
+1. **build** — [`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml)
+   builds and pushes the image to `ghcr.io/<owner>/engine`, checksum-pinned.
+   The `latest` tag only moves on the default branch.
+2. **validate** — [`.github/workflows/config-deploy.yml`](.github/workflows/config-deploy.yml)'s
+   `validate-config` job starts PostgreSQL and the just-built engine, bootstraps
+   the admin password, and runs the real config push against them — the same
+   server-cannot-deserialise failure mode the pipeline exists to catch, on a
+   server nobody depends on. Its `lint-config` job checks XML well-formedness,
+   missing ids and duplicate ids without needing an engine, so a config-only PR
+   gets feedback fast.
+3. **deploy** — also in `config-deploy.yml`: dry run, then push. Staging
+   (`deploy-staging`) auto-deploys with `--prune` on every push to the default
+   branch; production (`deploy-production`) targets a GitHub **Environment**
+   named `production`, which is where the manual gate lives — add required
+   reviewers to that environment (Settings → Environments → production) and the
+   job pauses for approval, the equivalent of GitLab's `when: manual`. Neither
+   job prunes production: deleting a channel there takes its message history
+   with it.
+
+Secrets to set (Settings → Secrets and variables → Actions, plus the same names
+on the `staging` / `production` environments where the value differs per
+environment): `OIE_STAGING_URL`, `OIE_STAGING_PASSWORD`, `OIE_PROD_URL`,
+`OIE_PROD_PASSWORD`, plus whatever `configuration-map.properties` references.
+Behind the mTLS proxy, add the client certificate and key as secrets and point
+`OIE_CLIENT_CERT` / `OIE_CLIENT_KEY` at them, with the CA in `OIE_CACERT`
+instead of `OIE_INSECURE`.
 
 ## Operating notes
 
