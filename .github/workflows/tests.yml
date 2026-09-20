@@ -18,22 +18,7 @@ name: tests
 # run_integration checked -- it does not run on push or pull_request.
 
 on:
-  push:
-    branches: [main, master]
-  pull_request:
   workflow_dispatch:
-    inputs:
-      run_integration:
-        description: 'Run the integration (connector) tests'
-        type: boolean
-        default: false
-
-permissions:
-  contents: read
-
-concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   js-unit:

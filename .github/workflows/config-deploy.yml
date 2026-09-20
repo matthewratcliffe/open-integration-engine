@@ -30,13 +30,6 @@ name: config-deploy
 #     OIE_INSECURE)
 
 on:
-  pull_request:
-    paths:
-      - 'config/**'
-  workflow_run:
-    workflows: ["docker-build"]
-    types: [completed]
-    branches: [main, master]
   workflow_dispatch:
 
 env:
