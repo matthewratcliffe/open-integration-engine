@@ -175,7 +175,6 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: staging
-      url: ${{ secrets.OIE_STAGING_URL }}
     env:
       OIE_URL: ${{ secrets.OIE_STAGING_URL }}
       OIE_PASSWORD: ${{ secrets.OIE_STAGING_PASSWORD }}
@@ -208,7 +207,6 @@ jobs:
     # before it runs, same as a manual pipeline job would.
     environment:
       name: production
-      url: ${{ secrets.OIE_PROD_URL }}
     env:
       OIE_URL: ${{ secrets.OIE_PROD_URL }}
       OIE_PASSWORD: ${{ secrets.OIE_PROD_PASSWORD }}
