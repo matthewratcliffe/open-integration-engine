@@ -89,10 +89,10 @@ keypair)
 
     current="$(tls_get /localCertificates)"
     tmp="$(mktemp)"; oie_cleanup_add "$tmp"
-    ALIAS="$alias" CERT_FILE="$cert" KEY_FILE="$key" python3 - "$tmp" <<'PY' <<<"$current"
+    ALIAS="$alias" CERT_FILE="$cert" KEY_FILE="$key" CURRENT="$current" python3 - "$tmp" <<'PY'
 import json, os, sys
 
-cur = json.loads(sys.stdin.read() or "{}").get("list") or {}
+cur = json.loads(os.environ["CURRENT"] or "{}").get("list") or {}
 items = cur.get("localCertificate") or []
 items = items if isinstance(items, list) else [items]
 
@@ -118,9 +118,9 @@ trust)
 
     current="$(tls_get /trustedCertificates)"
     tmp="$(mktemp)"; oie_cleanup_add "$tmp"
-    ALIAS="$alias" CERT_FILE="$cert" python3 - "$tmp" <<'PY' <<<"$current"
+    ALIAS="$alias" CERT_FILE="$cert" CURRENT="$current" python3 - "$tmp" <<'PY'
 import json,os,sys
-cur = json.loads(sys.stdin.read() or "{}").get("list") or {}
+cur = json.loads(os.environ["CURRENT"] or "{}").get("list") or {}
 items = cur.get("trustedCertificate") or []
 items = items if isinstance(items, list) else [items]
 alias = os.environ["ALIAS"]

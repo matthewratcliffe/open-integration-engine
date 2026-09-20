@@ -117,7 +117,7 @@ if map_xml="$(oie_api GET /server/configurationMap)"; then
     count="$(xmllint --xpath 'count(/map/entry)' "$tmp_m" 2>/dev/null || echo 0)"
     {
         printf '# Exported from %s on %s\n' "$OIE_URL" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-        printf '#\n# Values may reference ${ENV_VAR}; oie-config-push.sh expands them at\n'
+        printf "#\n# Values may reference \${ENV_VAR}; oie-config-push.sh expands them at\n"
         printf '# push time, which is how per-environment values stay out of git.\n\n'
         for (( i = 1; i <= count; i++ )); do
             k="$(xmllint --xpath "string(/map/entry[$i]/string)" "$tmp_m")"

@@ -468,9 +468,15 @@ if [[ "$DO_PRUNE" == "true" ]]; then
         [[ -n "${DESIRED[$id]:-}" ]] && continue
         warn "removing ${id}"
         request POST "/channels/${id}/_undeploy?returnErrors=false" || true
-        request DELETE "/channels/${id}" && pruned=$((pruned + 1)) || true
+        if request DELETE "/channels/${id}"; then
+            pruned=$((pruned + 1))
+        fi
     done
-    (( pruned == 0 )) && skip "nothing to prune" || ok "removed ${pruned}"
+    if (( pruned == 0 )); then
+        skip "nothing to prune"
+    else
+        ok "removed ${pruned}"
+    fi
 fi
 
 ########################################################################
