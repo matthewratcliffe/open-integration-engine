@@ -424,7 +424,7 @@ if [[ -n "${OIE_EXTENSION_URLS:-}" ]]; then
             # URL itself survives.
             expected="${entry#sha256:}"
             expected="${expected%%@*}"
-            url="${entry#sha256:${expected}@}"
+            url="${entry#sha256:"${expected}"@}"
         fi
 
         # Key the cache on the checksum when pinned (content-addressed, so a
@@ -462,9 +462,11 @@ if [[ -n "${OIE_EXTENSION_URLS:-}" ]]; then
 
         # Refresh the cache only from a verified download.
         if [[ "$source_desc" == "download" ]]; then
-            cp "$staged" "${cached}.tmp" 2>/dev/null \
-                && mv "${cached}.tmp" "$cached" 2>/dev/null \
-                || log "WARNING: could not cache ${url##*/}"
+            if cp "$staged" "${cached}.tmp" 2>/dev/null && mv "${cached}.tmp" "$cached" 2>/dev/null; then
+                :
+            else
+                log "WARNING: could not cache ${url##*/}"
+            fi
         fi
 
         install_extension_zip "$staged"
