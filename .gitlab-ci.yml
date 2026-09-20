@@ -20,7 +20,9 @@ variables:
 
 validate:
   stage: validate
-  image: hashicorp/terraform:1.10
+  image:
+    name: hashicorp/terraform:1.10
+    entrypoint: [""]
   tags: [docker]
   before_script:
     - apk add --no-cache bash shellcheck
@@ -84,7 +86,9 @@ push-ecr:
 
 .terraform-plan:
   extends: .aws-oidc
-  image: hashicorp/terraform:1.10
+  image:
+    name: hashicorp/terraform:1.10
+    entrypoint: [""]
   tags: [docker]
   needs:
     - job: push-ecr
@@ -116,7 +120,9 @@ push-ecr:
 
 .terraform-apply:
   extends: .aws-oidc
-  image: hashicorp/terraform:1.10
+  image:
+    name: hashicorp/terraform:1.10
+    entrypoint: [""]
   tags: [docker]
   script:
     - terraform -chdir="$TF_ROOT" init -input=false -backend-config="bucket=$AWS_TF_STATE_BUCKET" -backend-config="key=oie/$DEPLOY_ENV.tfstate" -backend-config="region=$AWS_REGION" -backend-config="dynamodb_table=$AWS_TF_LOCK_TABLE"
