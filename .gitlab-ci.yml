@@ -1,4 +1,15 @@
-stages: [validate, package, plan, deploy]
+include:
+  - project: "infra/awsshardmoduleprod"
+    ref: master
+    file: "ci/consume-shared-outputs.yml"
+
+stages:
+  - validate
+  - package
+  - staging-plan
+  - staging
+  - production-plan
+  - production
 
 variables:
   OIE_VERSION: "4.6.0"
@@ -31,6 +42,13 @@ build-image:
     - docker push "$IMAGE_TAG"
   rules: [{if: '$CI_COMMIT_BRANCH'}]
 
+fetch-shared-outputs:
+  stage: package
+  extends: .fetch_shared_outputs
+  tags: [docker]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
 .aws-oidc:
   id_tokens:
     GITLAB_OIDC_TOKEN:
@@ -38,6 +56,8 @@ build-image:
   before_script:
     - apk add --no-cache aws-cli jq
     - export AWS_REGION="${AWS_REGION:-ap-southeast-2}"
+    - export AWS_DEPLOY_ROLE_ARN="$(jq -r '.gitlab_ci_deploy_role_arn // empty' shared-outputs.json)"
+    - test -n "$AWS_DEPLOY_ROLE_ARN"
     - CREDS=$(aws sts assume-role-with-web-identity --role-arn "$AWS_DEPLOY_ROLE_ARN" --role-session-name "gitlab-$CI_PIPELINE_ID-$CI_JOB_ID" --web-identity-token "$GITLAB_OIDC_TOKEN")
     - export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r .Credentials.AccessKeyId)
     - export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r .Credentials.SecretAccessKey)
@@ -49,9 +69,13 @@ push-ecr:
   image: docker:28-cli
   services: [docker:28-dind]
   tags: [docker]
-  needs: [build-image]
+  needs:
+    - job: build-image
+    - job: fetch-shared-outputs
+      artifacts: true
   script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - export AWS_ECR_REPOSITORY_URL="$(jq -r .ecr_repository_url shared-outputs.json)"
     - aws ecr get-login-password | docker login --username AWS --password-stdin "${AWS_ECR_REPOSITORY_URL%%/*}"
     - docker pull "$IMAGE_TAG"
     - docker tag "$IMAGE_TAG" "$AWS_ECR_REPOSITORY_URL:$CI_COMMIT_SHA"
@@ -60,22 +84,30 @@ push-ecr:
 
 .terraform-plan:
   extends: .aws-oidc
-  stage: plan
   image: hashicorp/terraform:1.10
   tags: [docker]
-  needs: [push-ecr]
+  needs:
+    - job: push-ecr
+    - job: fetch-shared-outputs
+      artifacts: true
   script:
-    - printf '%s' "$AWS_SHARED_OUTPUTS_JSON" > "$TF_ROOT/shared-outputs.json"
+    - cp shared-outputs.json "$TF_ROOT/shared-outputs.json"
+    - ': "${RDS_MASTER_USERNAME:?RDS_MASTER_USERNAME is required}"'
+    - ': "${RDS_MASTER_PASSWORD:?RDS_MASTER_PASSWORD is required}"'
     - export SECRET_NAME="au-$DEPLOY_ENV-oie-secrets"
-    - jq -nc --arg a "$OIE_ADMIN_PASSWORD" --arg k "$KEYSTORE_PASSWORD" --arg j "$OIE_KEYSTORE_B64" '{OIE_ADMIN_PASSWORD:$a,KEYSTORE_PASSWORD:$k,KEYSTORE_BASE64:$j}' > /tmp/oie-secret.json
+    - jq -nc --arg u "$RDS_MASTER_USERNAME" --arg p "$RDS_MASTER_PASSWORD" --arg a "$OIE_ADMIN_PASSWORD" --arg k "$KEYSTORE_PASSWORD" --arg j "$OIE_KEYSTORE_B64" '{DATABASE_USERNAME:$u,DATABASE_PASSWORD:$p,OIE_ADMIN_PASSWORD:$a,KEYSTORE_PASSWORD:$k,KEYSTORE_BASE64:$j}' > /tmp/oie-secret.json
     - aws secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&1 || aws secretsmanager create-secret --name "$SECRET_NAME" --secret-string file:///tmp/oie-secret.json >/dev/null
     - aws secretsmanager put-secret-value --secret-id "$SECRET_NAME" --secret-string file:///tmp/oie-secret.json >/dev/null
     - export TF_VAR_app_secret_arn=$(aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --query ARN --output text)
-    - export TF_VAR_rds_endpoint="$RDS_ENDPOINT" TF_VAR_rds_database_name="$RDS_DATABASE_NAME"
-    - export TF_VAR_rds_secret_arn="$RDS_SECRET_ARN" TF_VAR_rds_security_group_id="$RDS_SECURITY_GROUP_ID"
+    - export TF_VAR_rds_endpoint="${RDS_ENDPOINT:-$(jq -r '.postgresql_db_instance_address.value // .postgresql_db_instance_address // empty' shared-outputs.json)}"
+    - ': "${RDS_DATABASE_NAME:?RDS_DATABASE_NAME must identify the database/schema on the shared RDS instance}"'
+    - export TF_VAR_rds_database_name="$RDS_DATABASE_NAME"
+    - export TF_VAR_rds_security_group_id="${RDS_SECURITY_GROUP_ID:-$(jq -r '.postgresql_db_security_group_id.value // .postgresql_db_security_group_id // empty' shared-outputs.json)}"
+    - ': "${TF_VAR_rds_endpoint:?RDS endpoint was not found in shared-outputs.json or RDS_ENDPOINT}"'
+    - ': "${TF_VAR_rds_security_group_id:?RDS security group was not found in shared-outputs.json or RDS_SECURITY_GROUP_ID}"'
     - export TF_VAR_region="$AWS_REGION" TF_VAR_environment="$DEPLOY_ENV" TF_VAR_image_tag="$CI_COMMIT_SHA"
     - export TF_VAR_shared_outputs_path="$TF_ROOT/shared-outputs.json" TF_VAR_admin_host_header="$OIE_HOSTNAME"
-    - export TF_VAR_alb_listener_rule_priority="$AWS_ALB_PRIORITY" TF_VAR_channel_ingress_cidrs="$AWS_NLB_SUBNET_CIDRS_JSON"
+    - export TF_VAR_alb_listener_rule_priority="$AWS_ALB_PRIORITY" TF_VAR_nlb_security_group_id="$(jq -r '.nlb_security_group_id.value // .nlb_security_group_id // empty' shared-outputs.json)"
     - terraform -chdir="$TF_ROOT" init -backend-config="bucket=$AWS_TF_STATE_BUCKET" -backend-config="key=oie/$DEPLOY_ENV.tfstate" -backend-config="region=$AWS_REGION" -backend-config="dynamodb_table=$AWS_TF_LOCK_TABLE"
     - terraform -chdir="$TF_ROOT" plan -out="$CI_PROJECT_DIR/$DEPLOY_ENV.tfplan"
   artifacts:
@@ -84,7 +116,6 @@ push-ecr:
 
 .terraform-apply:
   extends: .aws-oidc
-  stage: deploy
   image: hashicorp/terraform:1.10
   tags: [docker]
   script:
@@ -94,41 +125,49 @@ push-ecr:
 
 plan-aws-staging:
   extends: .terraform-plan
+  stage: staging-plan
   variables: {DEPLOY_ENV: staging, OIE_HOSTNAME: "$OIE_STAGING_HOSTNAME"}
   environment: {name: staging, action: prepare}
   rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
 
 deploy-aws-staging:
   extends: .terraform-apply
+  stage: staging
   needs: [plan-aws-staging]
   variables: {DEPLOY_ENV: staging}
   environment: {name: staging, url: "https://$OIE_STAGING_HOSTNAME"}
   rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
 
+deploy-local-k8s:
+  stage: staging
+  image: alpine:3.22
+  tags: [docker]
+  needs: [build-image]
+  before_script:
+    - export RDS_MASTER_USERNAME="$RDS_MASTER_USERNAME" RDS_MASTER_PASSWORD="$RDS_MASTER_PASSWORD"
+    - apk add --no-cache bash kubectl
+  script: ["bash scripts/oie-deploy-local-k8s.sh"]
+  environment: {name: local-k8s}
+  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
+
 plan-aws-production:
   extends: .terraform-plan
-  needs: [deploy-aws-staging]
+  stage: production-plan
+  needs:
+    - job: deploy-aws-staging
+    - job: push-ecr
+    - job: fetch-shared-outputs
+      artifacts: true
   variables: {DEPLOY_ENV: production, OIE_HOSTNAME: "$OIE_PRODUCTION_HOSTNAME"}
   environment: {name: production, action: prepare}
   rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
 
 deploy-aws-production:
   extends: .terraform-apply
+  stage: production
   needs: [plan-aws-production]
   variables: {DEPLOY_ENV: production}
   environment: {name: production, url: "https://$OIE_PRODUCTION_HOSTNAME"}
   when: manual
   allow_failure: false
-  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
-
-deploy-local-k8s:
-  stage: deploy
-  image: alpine:3.22
-  tags: [docker]
-  needs: [build-image]
-  before_script:
-    - apk add --no-cache bash kubectl
-  script:
-    - bash scripts/oie-deploy-local-k8s.sh
-  environment: {name: local-k8s}
   rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]

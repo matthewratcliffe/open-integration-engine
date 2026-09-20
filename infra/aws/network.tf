@@ -1,7 +1,6 @@
 resource "aws_security_group" "task" {
   name   = "${local.name}-task"
   vpc_id = local.shared.vpc_id
-
   egress {
     from_port   = 0
     to_port     = 0
@@ -10,7 +9,6 @@ resource "aws_security_group" "task" {
   }
   tags = local.tags
 }
-
 resource "aws_vpc_security_group_ingress_rule" "admin" {
   security_group_id            = aws_security_group.task.id
   referenced_security_group_id = local.shared.alb_security_group_id
@@ -18,19 +16,14 @@ resource "aws_vpc_security_group_ingress_rule" "admin" {
   to_port                      = 8443
   ip_protocol                  = "tcp"
 }
-
 resource "aws_vpc_security_group_ingress_rule" "channel" {
-  for_each = {
-    for pair in setproduct(var.channel_ports, var.channel_ingress_cidrs) :
-    "${pair[0]}-${pair[1]}" => pair
-  }
-  security_group_id = aws_security_group.task.id
-  cidr_ipv4         = each.value[1]
-  from_port         = each.value[0]
-  to_port           = each.value[0]
-  ip_protocol       = "tcp"
+  for_each                     = var.channel_ports
+  security_group_id            = aws_security_group.task.id
+  referenced_security_group_id = var.nlb_security_group_id
+  from_port                    = each.value
+  to_port                      = each.value
+  ip_protocol                  = "tcp"
 }
-
 resource "aws_vpc_security_group_ingress_rule" "database" {
   security_group_id            = var.rds_security_group_id
   referenced_security_group_id = aws_security_group.task.id
@@ -42,7 +35,6 @@ resource "aws_vpc_security_group_ingress_rule" "database" {
 resource "aws_security_group" "efs" {
   name   = "${local.name}-efs"
   vpc_id = local.shared.vpc_id
-
   ingress {
     from_port       = 2049
     to_port         = 2049

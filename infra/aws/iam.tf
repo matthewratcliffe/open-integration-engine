@@ -27,7 +27,7 @@ resource "aws_iam_role_policy" "secrets" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["secretsmanager:GetSecretValue"]
-      Resource = [var.app_secret_arn, var.rds_secret_arn]
+      Resource = var.app_secret_arn
     }]
   })
 }

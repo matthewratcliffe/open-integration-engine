@@ -1,37 +1,31 @@
 # AWS ECS deployment
 
 Terraform deploys one OIE Fargate task per environment. Staging applies on the
-default branch; production is a manual GitLab job. The task uses the shared ECS
-cluster, ECR repository and HTTPS ALB listener described by
-`AWS_SHARED_OUTPUTS_JSON`.
+GitLab default branch; production is a manual job. The shared ECS, ALB, NLB,
+VPC, subnets, ECR and RDS values come from the `shared-outputs.json` artifact
+fetched from `infra/awsshardmoduleprod`.
 
-The admin/API endpoint is HTTPS through the shared ALB. EFS persists `appdata`,
-including `keystore.jks`, across task replacement. The keystore is seeded once
-from Secrets Manager and is never overwritten after it exists on EFS.
+The admin/API endpoint uses the shared ALB. EFS persists OIE `appdata`, including
+`keystore.jks`, across task replacement. Terraform creates TCP target groups for
+ports 8081 and 6661 and registers the task with them, but does not change the
+existing NLB. Each apply prints `existing_nlb_listener_requirements`; manually
+forward the corresponding existing-NLB TCP listener to each target-group ARN.
 
-Terraform creates TCP target groups for ports 8081 and 6661 and registers the
-ECS task with them. It does not change the existing NLB. Every apply prints
-`existing_nlb_listener_requirements`; manually configure each listed NLB TCP
-listener to forward to its target-group ARN.
+Required GitLab variables:
 
-## Required GitLab variables
+- `AWS_REGION`, `AWS_TF_STATE_BUCKET`, `AWS_TF_LOCK_TABLE`
+- `AWS_ALB_PRIORITY`, `OIE_STAGING_HOSTNAME`, `OIE_PRODUCTION_HOSTNAME`
+- Environment-scoped `RDS_DATABASE_NAME`, `RDS_MASTER_USERNAME`, and `RDS_MASTER_PASSWORD`; the RDS endpoint,
+  RDS security group, NLB security group, ECS cluster, ALB listener, subnets and
+  ECR repository are read from the shared artifact.
+  If the fetched artifact omits the RDS security-group ID, set `RDS_SECURITY_GROUP_ID` explicitly.
+- `OIE_ADMIN_PASSWORD`, `KEYSTORE_PASSWORD`, and `OIE_KEYSTORE_B64`.
+  The RDS secret must contain `username` and `password`.
 
-- `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `AWS_ECR_REPOSITORY_URL`
-- `AWS_TF_STATE_BUCKET`, `AWS_TF_LOCK_TABLE`
-- `AWS_SHARED_OUTPUTS_JSON` with `vpc_id`, `private_subnet_ids`,
-  `ecs_cluster_id`, `ecs_cluster_name`, `ecr_repository_url`,
-  `alb_security_group_id`, and `alb_https_listener_arn`
-- `AWS_ALB_PRIORITY` (environment scoped and unique)
-- `AWS_NLB_SUBNET_CIDRS_JSON`, such as `["10.0.1.0/24","10.0.2.0/24"]`
-- `OIE_STAGING_HOSTNAME`, `OIE_PRODUCTION_HOSTNAME`
-- Environment-scoped `RDS_ENDPOINT`, `RDS_DATABASE_NAME`, `RDS_SECRET_ARN`,
-  `RDS_SECURITY_GROUP_ID`, `OIE_ADMIN_PASSWORD`, `KEYSTORE_PASSWORD`, and
-  `OIE_KEYSTORE_B64`. The RDS secret must contain `username` and `password`.
-
-Local Kubernetes additionally needs `KUBE_CONFIG_B64`. It deploys one utility
-engine and exposes both admin/API and channel traffic using `LoadBalancer`
-Services. The cluster needs MetalLB, kube-vip, or another load-balancer
-controller.
+Local Kubernetes additionally needs `KUBE_CONFIG_B64`, `DATABASE_URL`,
+`RDS_MASTER_USERNAME`, and `RDS_MASTER_PASSWORD`. It deploys one utility engine and
+exposes admin/API and channel traffic using `LoadBalancer` Services. The local
+cluster needs MetalLB, kube-vip, or another load-balancer controller.
 
 ## AWS access and port forwarding
 
@@ -42,8 +36,8 @@ aws ecs execute-command --cluster <cluster> --task <task-arn> \
   --container oie --interactive --command /bin/bash
 ```
 
-ECS Exec is not a TCP tunnel. To reach an internal ALB/NLB, use an SSM-managed
-bastion in the VPC:
+ECS Exec is not a TCP tunnel. To reach an internal ALB/NLB from a workstation,
+use an SSM-managed bastion in the VPC:
 
 ```bash
 aws ssm start-session --target <instance-id> \
@@ -51,7 +45,7 @@ aws ssm start-session --target <instance-id> \
   --parameters '{"host":["<internal-alb-dns>"],"portNumber":["443"],"localPortNumber":["9443"]}'
 ```
 
-ALB routing and TLS use hostname/SNI, so preserve the real hostname:
+ALB routing and TLS use hostname/SNI, so preserve the real hostname when testing:
 
 ```bash
 curl --resolve oie-staging.example.com:9443:127.0.0.1 \

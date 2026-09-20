@@ -3,8 +3,9 @@ set -euo pipefail
 : "${KUBE_CONFIG_B64:?required}"
 : "${OIE_KEYSTORE_B64:?required}"
 : "${DATABASE_URL:?required}"
-: "${DATABASE_USERNAME:?required}"
-: "${POSTGRES_PASSWORD:?required}"
+
+: "${RDS_MASTER_USERNAME:?required}"
+: "${RDS_MASTER_PASSWORD:?required}"
 : "${OIE_ADMIN_PASSWORD:?required}"
 : "${KEYSTORE_PASSWORD:?required}"
 : "${IMAGE_TAG:?required}"
@@ -18,10 +19,10 @@ kubectl -n "$ns" create secret docker-registry gitlab-registry --docker-server="
 keyfile="$(mktemp)"; trap 'rm -f "$keyfile"' EXIT
 printf '%s' "$OIE_KEYSTORE_B64" | base64 -d > "$keyfile"
 kubectl -n "$ns" create secret generic oie-keystore --from-file="keystore.jks=$keyfile" --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n "$ns" create secret generic oie-secrets --from-literal="POSTGRES_PASSWORD=$POSTGRES_PASSWORD" --from-literal="DATABASE_PASSWORD=$POSTGRES_PASSWORD" --from-literal="OIE_ADMIN_PASSWORD=$OIE_ADMIN_PASSWORD" --from-literal="KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n "$ns" create secret generic oie-secrets --from-literal="POSTGRES_PASSWORD=$RDS_MASTER_PASSWORD" --from-literal="DATABASE_PASSWORD=$RDS_MASTER_PASSWORD" --from-literal="OIE_ADMIN_PASSWORD=$OIE_ADMIN_PASSWORD" --from-literal="KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n "$ns" create configmap oie-scripts --from-file=scripts/oie-api.sh --from-file=scripts/oie-bootstrap-admin.sh --dry-run=client -o yaml | kubectl apply -f -
 sed '/^---$/q' deploy/k8s/config.yaml | kubectl -n "$ns" apply -f -
-kubectl -n "$ns" patch configmap oie-config --type merge -p "{\"data\":{\"DATABASE_URL\":\"$DATABASE_URL\",\"DATABASE_USERNAME\":\"$DATABASE_USERNAME\"}}"
+kubectl -n "$ns" patch configmap oie-config --type merge -p "{\"data\":{\"DATABASE_URL\":\"$DATABASE_URL\",\"DATABASE_USERNAME\":\"$RDS_MASTER_USERNAME\"}}"
 kubectl -n "$ns" apply -f deploy/k8s/engine.yaml -f deploy/k8s/services.yaml
 kubectl -n "$ns" scale statefulset/oie-worker --replicas=0
 kubectl -n "$ns" scale statefulset/oie-utility --replicas=1

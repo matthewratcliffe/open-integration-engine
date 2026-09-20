@@ -38,17 +38,10 @@ resource "aws_ecs_task_definition" "oie" {
       { name = "SERVER_STARTUP_DEPLOY", value = "true" },
     ]
 
-    secrets = concat(
-      [for key in local.app_secret_keys : {
-        name      = key
-        valueFrom = "${var.app_secret_arn}:${key}::"
-      }],
-      [
-        { name = "DATABASE_USERNAME", valueFrom = "${var.rds_secret_arn}:username::" },
-        { name = "DATABASE_PASSWORD", valueFrom = "${var.rds_secret_arn}:password::" },
-      ]
-    )
-
+    secrets = [for key in local.app_secret_keys : {
+      name      = key
+      valueFrom = "${var.app_secret_arn}:${key}::"
+    }]
     mountPoints = [{
       sourceVolume  = "appdata"
       containerPath = "/opt/engine/appdata"

@@ -7,7 +7,6 @@ variable "alb_listener_rule_priority" { type = number }
 variable "app_secret_arn" { type = string }
 variable "rds_endpoint" { type = string }
 variable "rds_database_name" { type = string }
-variable "rds_secret_arn" { type = string }
 variable "rds_security_group_id" { type = string }
 
 variable "channel_ports" {
@@ -15,10 +14,7 @@ variable "channel_ports" {
   default = [8081, 6661]
 }
 
-variable "channel_ingress_cidrs" {
-  description = "Existing NLB subnet CIDRs; target groups disable client IP preservation."
-  type        = set(string)
-}
+variable "nlb_security_group_id" { type = string }
 
 variable "task_cpu" {
   type    = string
