@@ -5,7 +5,7 @@ name: docker-build
 #
 #   GitLab                          GitHub Actions
 #   ----------------------------    ----------------------------------------
-#   $CI_REGISTRY_IMAGE              ghcr.io/<owner>/engine
+#   $CI_REGISTRY_IMAGE              ghcr.io/<owner>/open-integration-engine
 #   $CI_REGISTRY_USER/PASSWORD      GITHUB_TOKEN (via docker/login-action)
 #   $CI_COMMIT_SHORT_SHA            ${{ github.sha }} (short form below)
 #   rules: changes: docker/**       paths filter below
@@ -28,7 +28,7 @@ on:
 env:
   OIE_VERSION: "4.6.0"
   OIE_SHA256: "7c82e79027e671277e1d78d0f7bbb1c53ddf1be476f1e80c2ddbfcf7855900ea"
-  IMAGE: ghcr.io/${{ github.repository_owner }}/engine
+  IMAGE: ghcr.io/${{ github.repository_owner }}/open-integration-engine
 
 permissions:
   contents: read

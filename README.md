@@ -580,7 +580,7 @@ fixtures still need an Administrator export.
 Two workflows split the same three stages the old GitLab pipeline had:
 
 1. **build** — [`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml)
-   builds and pushes the image to `ghcr.io/<owner>/engine`, checksum-pinned.
+   builds and pushes the image to `ghcr.io/<owner>/open-integration-engine`, checksum-pinned.
    The `latest` tag only moves on the default branch.
 2. **validate** — [`.github/workflows/config-deploy.yml`](.github/workflows/config-deploy.yml)'s
    `validate-config` job starts PostgreSQL and the just-built engine, bootstraps

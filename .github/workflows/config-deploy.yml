@@ -92,7 +92,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      IMAGE: ghcr.io/${{ github.repository_owner }}/engine
+      IMAGE: ghcr.io/${{ github.repository_owner }}/open-integration-engine
       OIE_URL: "https://engine:8443/api"
       OIE_INSECURE: "true"
       OIE_ADMIN_PASSWORD: "ci-throwaway-admin"
