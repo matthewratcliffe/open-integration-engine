@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-: "${KUBE_CONFIG_B64:?required}"
+if [[ -z "${KUBE_CONFIG_B64:-}" ]]; then
+  echo "KUBE_CONFIG_B64 is unavailable in this job. Set it as a masked GitLab variable with environment scope local-k8s (or *); if Protected, protect the default branch." >&2
+  exit 1
+fi
 : "${OIE_KEYSTORE_B64:?required}"
 : "${DATABASE_URL:?required}"
 
@@ -11,7 +14,11 @@ set -euo pipefail
 : "${IMAGE_TAG:?required}"
 
 mkdir -p "$HOME/.kube"
-printf '%s' "$KUBE_CONFIG_B64" | base64 -d > "$HOME/.kube/config"
+if [[ -f "$KUBE_CONFIG_B64" ]]; then
+  cp "$KUBE_CONFIG_B64" "$HOME/.kube/config"
+else
+  printf '%s' "$KUBE_CONFIG_B64" | base64 -d > "$HOME/.kube/config"
+fi
 chmod 600 "$HOME/.kube/config"
 ns="${OIE_NAMESPACE:-oie-local}"
 kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
