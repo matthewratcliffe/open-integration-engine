@@ -17,6 +17,9 @@ variables:
   IMAGE_TAG: "$CI_REGISTRY_IMAGE/oie:$CI_COMMIT_SHA"
   TF_ROOT: "$CI_PROJECT_DIR/infra/aws"
   TF_IN_AUTOMATION: "true"
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_DRIVER: overlay2
 
 validate:
   stage: validate
@@ -38,6 +41,7 @@ build-image:
   services: [docker:28-dind]
   tags: [docker]
   before_script:
+    - until docker info >/dev/null 2>&1; do sleep 2; done
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     - docker build --build-arg "OIE_VERSION=$OIE_VERSION" --build-arg "OIE_SHA256=$OIE_SHA256" -t "$IMAGE_TAG" docker
@@ -76,6 +80,7 @@ push-ecr:
     - job: fetch-shared-outputs
       artifacts: true
   script:
+    - until docker info >/dev/null 2>&1; do sleep 2; done
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
     - export AWS_ECR_REPOSITORY_URL="$(jq -r .ecr_repository_url shared-outputs.json)"
     - aws ecr get-login-password | docker login --username AWS --password-stdin "${AWS_ECR_REPOSITORY_URL%%/*}"
