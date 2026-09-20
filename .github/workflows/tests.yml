@@ -192,11 +192,8 @@ jobs:
       # The 12 first-party plugins (FHIR, SFTP, Null Connector, Random
       # Generator, ...) used to be built from source here; they now live in
       # their own repos and are fetched + baked into extensions.dist/ inside
-      # the image build above, via OIE_BUILTIN_PLUGIN_URLS (docker/Dockerfile).
-      # NOTE: until each of those 12 repos has a real release, that build arg
-      # points at placeholder version/checksums and the image build step above
-      # will fail to fetch them -- see the Dockerfile comment on
-      # OIE_BUILTIN_PLUGIN_URLS.
+      # the image build above, via OIE_BUILTIN_PLUGIN_URLS (docker/Dockerfile),
+      # pinned to each repo's tagged release.
 
       - name: Start Postgres
         run: |

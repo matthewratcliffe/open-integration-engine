@@ -35,23 +35,23 @@ ARG OIE_TARBALL_URL=
 #
 # Format matches OIE_EXTENSION_URLS: comma-separated sha256:<hex>@<url> entries.
 #
-# TODO: every checksum below is a placeholder (repeated zeros) and every
-# version is a placeholder (0.1.0) because none of these 12 repos has cut a
-# real release yet. Replace both once each repo's first release is tagged --
-# take the checksum from that release's own sha256sums/SHA256SUMS asset, the
-# same way OIE_SHA256 above is sourced for the engine itself.
-ARG OIE_BUILTIN_PLUGIN_URLS="sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-null-connector/releases/download/v0.1.0/nullsender-0.1.0.zip,\
-sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-volume-monitor/releases/download/v0.1.0/volumemonitor-0.1.0.zip,\
-sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-update-check/releases/download/v0.1.0/updatecheck-0.1.0.zip,\
-sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-sso-user-guard/releases/download/v0.1.0/ssouserguard-0.1.0.zip,\
-sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-sftp-connector/releases/download/v0.1.0/sftp-0.1.0.zip,\
-sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-random-generator/releases/download/v0.1.0/generator-0.1.0.zip,\
-sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-node-monitor/releases/download/v0.1.0/nodemonitor-0.1.0.zip,\
-sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-key-store/releases/download/v0.1.0/keystore-0.1.0.zip,\
-sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-git-sync/releases/download/v0.1.0/gitsync-0.1.0.zip,\
-sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-fhir-connector/releases/download/v0.1.0/fhir-0.1.0.zip,\
-sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-cluster/releases/download/v0.1.0/cluster-0.1.0.zip,\
-sha256:0000000000000000000000000000000000000000000000000000000000000000@https://github.com/gibson9583/oie-backup/releases/download/v0.1.0/backup-0.1.0.zip"
+# Pinned to each repo's latest tagged release as of 2026-09-20 (owner:
+# matthewratcliffe, not the placeholder org used before these repos had real
+# releases). Bump a version/checksum pair the same way OIE_SHA256 above is
+# sourced for the engine itself: the digest comes from that release's own
+# asset checksum.
+ARG OIE_BUILTIN_PLUGIN_URLS="sha256:ec850661df0512cef4591d9439a321c2be2d8e80c22f0417edbfd04b99d33c60@https://github.com/matthewratcliffe/oie-null-connector/releases/download/v0.2.0/nullsender-0.2.0.zip,\
+sha256:b2c2402d8475591effb354134e1e8fc4528ee9c2105c124de5d77e1338207e6e@https://github.com/matthewratcliffe/oie-volume-monitor/releases/download/v0.1.1/volumemonitor-0.1.1.zip,\
+sha256:4cba922267521b6ee8bafd37a6265c50c111d356e9f4574b97b4e07178814c34@https://github.com/matthewratcliffe/oie-update-check/releases/download/v0.1.1/updatecheck-0.1.1.zip,\
+sha256:b09211f20e65b3cfa6231d80782baef8e36891b67cffba3f27fc69a844a853a1@https://github.com/matthewratcliffe/oie-sso-user-guard/releases/download/v0.1.1/ssouserguard-0.1.1.zip,\
+sha256:8792ca72faf3d802abd182e8ff62c8ffaf275f5c45e059c793b7ce43caf45d6f@https://github.com/matthewratcliffe/oie-sftp-connector/releases/download/v0.1.1/sftp-0.1.1.zip,\
+sha256:5177bae67b21115f9046481193eeb4fbac15445c87bdaaa4f60a7ff124d6ab59@https://github.com/matthewratcliffe/oie-random-generator/releases/download/v0.1.1/generator-0.1.1.zip,\
+sha256:44752bda42bea5d6ccace69f74cba446470c162a412be46b34a9f95d01d241db@https://github.com/matthewratcliffe/oie-node-monitor/releases/download/v0.1.1/nodemonitor-0.1.1.zip,\
+sha256:6daab20dbf30648ea5a38656eb6a522595764b22f1cf18807eb8a1f17914d463@https://github.com/matthewratcliffe/oie-key-store/releases/download/v0.1.1/keystore-0.1.1.zip,\
+sha256:c75b651e3ab8ab9c756516a3e308dca3a0e23c5ba6dfc27ab945d2e8c96379a2@https://github.com/matthewratcliffe/oie-git-sync/releases/download/v0.1.1/gitsync-0.1.1.zip,\
+sha256:bd0802f87c57a9dd1dc75677607115360935e5267316b79c38dd022396722a03@https://github.com/matthewratcliffe/oie-fhir-connector/releases/download/v0.2.1/fhir-0.2.1.zip,\
+sha256:39bcbf226344e1397ce9285df048aee65c6630f2a0ba13457b7caa73a6f657b1@https://github.com/matthewratcliffe/oie-cluster/releases/download/v0.1.1/cluster-0.1.1.zip,\
+sha256:00564877079f078ed1da1ba8821811d14c48301320b2fc98d183fea93e0bde62@https://github.com/matthewratcliffe/oie-backup/releases/download/v0.1.1/backup-0.1.1.zip"
 
 # Trim the Administrator client jars (~82MB, only needed if operators launch the
 # Administrator GUI from this server) and the mccommand CLI (~32MB, superseded
