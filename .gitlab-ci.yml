@@ -53,7 +53,7 @@ fetch-shared-outputs:
     - apk add --no-cache curl jq
   script:
     - export SHARED_PROJECT_ID="$(printf %s "$SHARED_OUTPUTS_PROJECT" | jq -sRr @uri)"
-    - export SHARED_JOBS="$(curl --fail --location --header "JOB-TOKEN: $CI_JOB_TOKEN" "$CI_API_V4_URL/projects/$SHARED_PROJECT_ID/jobs?scope=success&order_by=id&sort=desc&per_page=100")"
+    - 'export SHARED_JOBS="$(curl --fail --location --header "JOB-TOKEN: $CI_JOB_TOKEN" "$CI_API_V4_URL/projects/$SHARED_PROJECT_ID/jobs?scope=success&order_by=id&sort=desc&per_page=100")"'
     - export SHARED_JOB_IDS="$(printf %s "$SHARED_JOBS" | jq -r '.[].id')"
     - test -n "$SHARED_JOB_IDS"
     - >-
