@@ -170,6 +170,21 @@ kubectl -n "$ns" set image statefulset/oie-utility "engine=$IMAGE_TAG"
 kubectl -n "$ns" patch statefulset oie-utility --type merge -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"gitlab-registry"}]}}}}'
 kubectl -n "$ns" scale statefulset/oie-utility --replicas=1
 
+# Heal a wedged pod. Under podManagementPolicy: OrderedReady + RollingUpdate,
+# the StatefulSet will NOT replace a pod that is not Ready -- so a pod left on
+# the manifest placeholder image (oie/engine:4.6.0, absent from this registry,
+# stuck in ImagePullBackOff) by an earlier run blocks its own replacement, and
+# set-image alone never converges. If oie-utility-0 is still on that placeholder,
+# delete it so the StatefulSet recreates it against the corrected spec. Matching
+# the exact placeholder avoids image-ref normalization false positives against
+# $IMAGE_TAG; a pod already on the real image is never touched.
+placeholder_image="oie/engine:4.6.0"
+current_util_image="$(kubectl -n "$ns" get pod oie-utility-0 -o jsonpath='{.spec.containers[0].image}' 2>/dev/null || true)"
+if [[ "$current_util_image" == "$placeholder_image" ]]; then
+  echo "oie-utility-0 is wedged on the placeholder image '$current_util_image' -- deleting it so the StatefulSet recreates it on '$IMAGE_TAG'."
+  kubectl -n "$ns" delete pod oie-utility-0 --wait=false
+fi
+
 kubectl -n "$ns" patch service oie-admin --type merge -p '{"spec":{"type":"LoadBalancer","selector":{"app.kubernetes.io/name":"oie","app.kubernetes.io/component":"utility"}}}'
 kubectl -n "$ns" patch service oie-channels --type merge -p '{"spec":{"type":"LoadBalancer","selector":{"app.kubernetes.io/name":"oie","app.kubernetes.io/component":"utility"}}}'
 kubectl -n "$ns" delete poddisruptionbudget oie-worker --ignore-not-found
