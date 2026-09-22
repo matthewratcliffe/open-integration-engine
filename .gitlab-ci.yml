@@ -168,8 +168,9 @@ deploy-local-k8s:
   tags: [docker]
   needs: [build-image]
   before_script:
-    - export RDS_MASTER_USERNAME="$RDS_MASTER_USERNAME" RDS_MASTER_PASSWORD="$RDS_MASTER_PASSWORD"
-    - apk add --no-cache bash kubectl
+    # openssl for password generation, openjdk for keytool (keystore generation),
+    # both used only when the corresponding CI variable is unset (see the script).
+    - apk add --no-cache bash kubectl openssl openjdk17-jre-headless
   script: ["bash scripts/oie-deploy-local-k8s.sh"]
   environment: {name: local-k8s}
   rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
