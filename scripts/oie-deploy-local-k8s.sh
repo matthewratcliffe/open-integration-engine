@@ -146,16 +146,49 @@ else
   # DATABASE_URL/DATABASE_USERNAME at oie-db, so nothing to patch -- just deploy it.
   echo "Deploying the in-cluster Postgres (deploy/k8s/postgres.yaml); DATABASE_URL stays at oie-db."
   kubectl -n "$ns" apply -f deploy/k8s/postgres.yaml
-  kubectl -n "$ns" rollout status statefulset/oie-db --timeout=5m
+  if ! kubectl -n "$ns" rollout status statefulset/oie-db --timeout=5m; then
+    echo "=================== rollout diagnostics (oie-db) ==================="
+    kubectl -n "$ns" get pods -o wide || true
+    kubectl -n "$ns" describe pod -l app.kubernetes.io/component=db || true
+    kubectl -n "$ns" get events --sort-by=.lastTimestamp | tail -30 || true
+    kubectl -n "$ns" logs -l app.kubernetes.io/component=db --tail=100 || true
+    echo "===================================================================="
+    exit 1
+  fi
 fi
 
 # --- Engine --------------------------------------------------------------------
 kubectl -n "$ns" apply -f deploy/k8s/engine.yaml -f deploy/k8s/services.yaml
 kubectl -n "$ns" scale statefulset/oie-worker --replicas=0
-kubectl -n "$ns" scale statefulset/oie-utility --replicas=1
+
+# Set the image and the pull secret BEFORE scaling the utility node up. If we
+# scaled first, the pod would be created against the manifest's placeholder
+# image (oie/engine:4.6.0, absent from this registry) with no pull secret, land
+# in ImagePullBackOff, and only a second rollout would correct it -- which under
+# OrderedReady races and can leave the first pod stuck. Patch first, start once.
 kubectl -n "$ns" set image statefulset/oie-utility "engine=$IMAGE_TAG"
 kubectl -n "$ns" patch statefulset oie-utility --type merge -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"gitlab-registry"}]}}}}'
+kubectl -n "$ns" scale statefulset/oie-utility --replicas=1
+
 kubectl -n "$ns" patch service oie-admin --type merge -p '{"spec":{"type":"LoadBalancer","selector":{"app.kubernetes.io/name":"oie","app.kubernetes.io/component":"utility"}}}'
 kubectl -n "$ns" patch service oie-channels --type merge -p '{"spec":{"type":"LoadBalancer","selector":{"app.kubernetes.io/name":"oie","app.kubernetes.io/component":"utility"}}}'
 kubectl -n "$ns" delete poddisruptionbudget oie-worker --ignore-not-found
-kubectl -n "$ns" rollout status statefulset/oie-utility --timeout=10m
+
+# Wait for the utility node. On timeout, dump enough to diagnose WHY the pod is
+# not ready -- pod phase, scheduling/pull events, and the engine's own logs --
+# before failing the job, so the CI log is self-explanatory instead of a bare
+# "timed out waiting for the condition".
+dump_diagnostics() {
+  echo "=================== rollout diagnostics (oie-utility) ==================="
+  echo "--- pods ---";        kubectl -n "$ns" get pods -o wide || true
+  echo "--- describe ---";    kubectl -n "$ns" describe pod -l app.kubernetes.io/component=utility || true
+  echo "--- recent events ---"; kubectl -n "$ns" get events --sort-by=.lastTimestamp | tail -30 || true
+  echo "--- engine logs (last 100, current + previous) ---"
+  kubectl -n "$ns" logs -l app.kubernetes.io/component=utility --tail=100 || true
+  kubectl -n "$ns" logs -l app.kubernetes.io/component=utility --tail=100 --previous 2>/dev/null || true
+  echo "========================================================================"
+}
+if ! kubectl -n "$ns" rollout status statefulset/oie-utility --timeout=10m; then
+  dump_diagnostics
+  exit 1
+fi
