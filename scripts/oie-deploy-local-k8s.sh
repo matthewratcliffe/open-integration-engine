@@ -89,10 +89,17 @@ else
   # Matches the engine's own self-signed keystore: a single RSA keypair under the
   # default alias. The engine adds its data-encryption secret key to this same
   # store on first boot; keeping the file stable is what preserves that key.
+  #
+  # keytool refuses to write into an existing empty file ("Keystore file exists,
+  # but is empty"), and mktemp above already created $keyfile -- so remove it and
+  # let keytool create the keystore itself. Errors are NOT swallowed: a keytool
+  # failure must be visible in the job log (the JKS-format advisory it prints to
+  # stderr is expected and harmless -- the engine ships JKS).
+  rm -f "$keyfile"
   keytool -genkeypair -alias mirth -keyalg RSA -keysize 2048 -validity 3650 \
     -dname "CN=oie, OU=oie, O=oie, L=local, ST=local, C=AU" \
     -keystore "$keyfile" -storetype JKS \
-    -storepass "$keystore_password" -keypass "$keystore_password" >/dev/null 2>&1
+    -storepass "$keystore_password" -keypass "$keystore_password"
 fi
 kubectl -n "$ns" create secret generic oie-keystore \
   --from-file="keystore.jks=$keyfile" \
