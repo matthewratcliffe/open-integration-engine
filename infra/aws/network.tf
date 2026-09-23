@@ -17,11 +17,13 @@ resource "aws_vpc_security_group_ingress_rule" "admin" {
   ip_protocol                  = "tcp"
 }
 resource "aws_vpc_security_group_ingress_rule" "channel" {
-  for_each                     = local.channel_ports
+  # Open once for the whole reserved range rather than per configured
+  # channel port, so adding/removing a channel never requires a
+  # security-group change.
   security_group_id            = aws_security_group.task.id
   referenced_security_group_id = var.nlb_security_group_id
-  from_port                    = tonumber(each.value)
-  to_port                      = tonumber(each.value)
+  from_port                    = local.channel_port_range.min
+  to_port                      = local.channel_port_range.max
   ip_protocol                  = "tcp"
 }
 resource "aws_vpc_security_group_ingress_rule" "database" {

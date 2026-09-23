@@ -42,6 +42,13 @@ resource "aws_lb_target_group" "channel" {
     port     = "traffic-port"
   }
   tags = local.tags
+
+  lifecycle {
+    precondition {
+      condition     = tonumber(each.value) >= local.channel_port_range.min && tonumber(each.value) <= local.channel_port_range.max
+      error_message = "Channel port ${each.value} is outside this environment's reserved NLB port range (${local.channel_port_range.min}-${local.channel_port_range.max})."
+    }
+  }
 }
 
 # Each channel port gets its own listener on the shared NLB. Terraform owns

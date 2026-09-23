@@ -10,8 +10,9 @@ variable "rds_database_name" { type = string }
 variable "rds_security_group_id" { type = string }
 
 variable "channel_ports" {
-  type    = set(number)
-  default = [8081, 6661]
+  description = "Ports for channels to expose via the NLB. Empty by default - no channels are deployed until you add some. Each port must fall within this environment's reserved NLB port range (staging 50000-50100, production 50500-50600 - see locals.channel_port_ranges)."
+  type        = set(number)
+  default     = []
 }
 
 variable "nlb_security_group_id" { type = string }
