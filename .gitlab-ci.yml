@@ -73,7 +73,7 @@ fetch-shared-outputs:
     GITLAB_OIDC_TOKEN:
       aud: "https://$CI_SERVER_HOST"
   before_script:
-    - apk add --no-cache aws-cli jq
+    - apk add --no-cache aws-cli jq openssl
     - export AWS_REGION="${AWS_REGION:-ap-southeast-2}"
     - export AWS_DEPLOY_ROLE_ARN="$(jq -r '.gitlab_ci_deploy_role_arn // empty' shared-outputs.json)"
     - test -n "$AWS_DEPLOY_ROLE_ARN"
@@ -114,8 +114,11 @@ push-ecr:
       artifacts: true
   script:
     - cp shared-outputs.json "$TF_ROOT/shared-outputs.json"
-    - ': "${RDS_MASTER_USERNAME:?RDS_MASTER_USERNAME is required}"'
-    - ': "${RDS_MASTER_PASSWORD:?RDS_MASTER_PASSWORD is required}"'
+    - ': "${ENCRYPTION_KEY:?ENCRYPTION_KEY is required to decrypt the RDS master credentials}"'
+    - export RDS_MASTER_USERNAME="${RDS_MASTER_USERNAME:-$(jq -r '.postgresql_db_master_username_enc // empty' shared-outputs.json | openssl enc -d -aes-256-cbc -pbkdf2 -salt -a -A -pass "pass:${ENCRYPTION_KEY}")}"
+    - export RDS_MASTER_PASSWORD="${RDS_MASTER_PASSWORD:-$(jq -r '.postgresql_db_master_password_enc // empty' shared-outputs.json | openssl enc -d -aes-256-cbc -pbkdf2 -salt -a -A -pass "pass:${ENCRYPTION_KEY}")}"
+    - ': "${RDS_MASTER_USERNAME:?RDS_MASTER_USERNAME could not be decrypted from shared-outputs.json (check ENCRYPTION_KEY) or supplied directly}"'
+    - ': "${RDS_MASTER_PASSWORD:?RDS_MASTER_PASSWORD could not be decrypted from shared-outputs.json (check ENCRYPTION_KEY) or supplied directly}"'
     - export SECRET_NAME="au-$DEPLOY_ENV-oie-secrets"
     - jq -nc --arg u "$RDS_MASTER_USERNAME" --arg p "$RDS_MASTER_PASSWORD" --arg a "$OIE_ADMIN_PASSWORD" --arg k "$KEYSTORE_PASSWORD" --arg j "$OIE_KEYSTORE_B64" '{DATABASE_USERNAME:$u,DATABASE_PASSWORD:$p,OIE_ADMIN_PASSWORD:$a,KEYSTORE_PASSWORD:$k,KEYSTORE_BASE64:$j}' > /tmp/oie-secret.json
     - aws secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&1 || aws secretsmanager create-secret --name "$SECRET_NAME" --secret-string file:///tmp/oie-secret.json >/dev/null
