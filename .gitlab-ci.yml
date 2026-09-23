@@ -135,6 +135,8 @@ push-ecr:
     - export TF_VAR_alb_listener_rule_priority="$AWS_ALB_PRIORITY"
     - export TF_VAR_nlb_security_group_id="${NLB_SECURITY_GROUP_ID:-$(jq -r '.nlb_security_group_id | (.value? // .) // empty' shared-outputs.json)}"
     - ': "${TF_VAR_nlb_security_group_id:?NLB security group was not found in shared-outputs.json or NLB_SECURITY_GROUP_ID}"'
+    - export TF_VAR_nlb_arn="${NLB_ARN:-$(jq -r '.nlb_arn | (.value? // .) // empty' shared-outputs.json)}"
+    - ': "${TF_VAR_nlb_arn:?NLB ARN was not found in shared-outputs.json or NLB_ARN}"'
     - export TF_VAR_efs_mount_target_subnet_ids="${EFS_MOUNT_TARGET_SUBNET_IDS:-[]}"
     - terraform -chdir="$TF_ROOT" init -backend-config="environments/$DEPLOY_ENV.backend.hcl"
     - terraform -chdir="$TF_ROOT" plan -out="$CI_PROJECT_DIR/$DEPLOY_ENV.tfplan"
@@ -151,7 +153,6 @@ push-ecr:
   script:
     - terraform -chdir="$TF_ROOT" init -input=false -backend-config="environments/$DEPLOY_ENV.backend.hcl"
     - terraform -chdir="$TF_ROOT" apply -auto-approve "$CI_PROJECT_DIR/$DEPLOY_ENV.tfplan"
-    - terraform -chdir="$TF_ROOT" output existing_nlb_listener_requirements
 
 plan-aws-staging:
   extends: .terraform-plan

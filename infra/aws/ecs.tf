@@ -101,6 +101,6 @@ resource "aws_ecs_service" "oie" {
     }
   }
 
-  depends_on = [aws_lb_listener_rule.admin, aws_efs_mount_target.appdata]
+  depends_on = [aws_lb_listener_rule.admin, aws_lb_listener.channel, aws_efs_mount_target.appdata]
   tags       = local.tags
 }

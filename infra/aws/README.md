@@ -7,9 +7,13 @@ fetched from `infra/awsshardmoduleprod`.
 
 The admin/API endpoint uses the shared ALB. EFS persists OIE `appdata`, including
 `keystore.jks`, across task replacement. Terraform creates TCP target groups for
-ports 8081 and 6661 and registers the task with them, but does not change the
-existing NLB. Each apply prints `existing_nlb_listener_requirements`; manually
-forward the corresponding existing-NLB TCP listener to each target-group ARN.
+ports 8081 and 6661 (channel traffic - HTTP and MLLP by default) and owns their
+listeners directly on the shared NLB (`load_balancing.tf`'s `aws_lb_listener.channel`),
+since the ECS service requires each target group to already have an associated
+load balancer at creation time. The NLB is shared with other apps, so this
+requires `nlb_arn` from `awsshardmoduleprod`'s shared output, and the NLB's own
+security group (`awsshardmoduleprod`) needs inbound rules for these ports for
+external channel clients to actually reach them.
 
 The Terraform state backend (S3 bucket, key, region, locking) is defined per
 environment in `environments/<env>.backend.hcl` - a checked-in file, not a
