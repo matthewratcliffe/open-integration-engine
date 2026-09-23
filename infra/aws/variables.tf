@@ -16,6 +16,12 @@ variable "channel_ports" {
 
 variable "nlb_security_group_id" { type = string }
 
+variable "efs_mount_target_subnet_ids" {
+  description = "Private subnets to place EFS mount targets in - at most one per availability zone. Leave empty to derive one subnet per AZ automatically; pin it when mount targets already exist, so their subnets are preserved instead of replaced."
+  type        = list(string)
+  default     = []
+}
+
 variable "task_cpu" {
   type    = string
   default = "2048"
