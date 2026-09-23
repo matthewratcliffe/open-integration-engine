@@ -159,6 +159,55 @@ plan-aws-staging:
   environment: {name: staging, action: prepare}
   rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
 
+# ONE-OFF: a partial apply earlier created these two EFS mount targets in AWS
+# before failing on an unrelated resource, so they're real but Terraform's
+# state never recorded them. Import ties state back to reality without
+# touching AWS. Delete this job once it has been run successfully once.
+import-efs-mount-targets:
+  extends: .aws-oidc
+  stage: staging-plan
+  image:
+    name: hashicorp/terraform:1.10
+    entrypoint: [""]
+  tags: [docker]
+  needs:
+    - job: fetch-shared-outputs
+      artifacts: true
+  variables: {DEPLOY_ENV: staging, OIE_HOSTNAME: "$OIE_STAGING_HOSTNAME"}
+  when: manual
+  script:
+    - cp shared-outputs.json "$TF_ROOT/shared-outputs.json"
+    - ': "${ENCRYPTION_KEY:?ENCRYPTION_KEY is required to decrypt the RDS master credentials}"'
+    - export RDS_MASTER_USERNAME="${RDS_MASTER_USERNAME:-$(jq -r '.postgresql_db_master_username_enc // empty' shared-outputs.json | openssl enc -d -aes-256-cbc -pbkdf2 -salt -a -A -pass "pass:${ENCRYPTION_KEY}")}"
+    - export RDS_MASTER_PASSWORD="${RDS_MASTER_PASSWORD:-$(jq -r '.postgresql_db_master_password_enc // empty' shared-outputs.json | openssl enc -d -aes-256-cbc -pbkdf2 -salt -a -A -pass "pass:${ENCRYPTION_KEY}")}"
+    - ': "${RDS_MASTER_USERNAME:?RDS_MASTER_USERNAME could not be decrypted from shared-outputs.json (check ENCRYPTION_KEY) or supplied directly}"'
+    - ': "${RDS_MASTER_PASSWORD:?RDS_MASTER_PASSWORD could not be decrypted from shared-outputs.json (check ENCRYPTION_KEY) or supplied directly}"'
+    - export TF_VAR_app_secret_arn=$(aws secretsmanager describe-secret --secret-id "au-$DEPLOY_ENV-oie-secrets" --query ARN --output text)
+    - export TF_VAR_rds_endpoint="${RDS_ENDPOINT:-$(jq -r '.postgresql_db_instance_address | (.value? // .) // empty' shared-outputs.json)}"
+    - ': "${RDS_DATABASE_NAME:?RDS_DATABASE_NAME must identify the database/schema on the shared RDS instance}"'
+    - export TF_VAR_rds_database_name="$RDS_DATABASE_NAME"
+    - export TF_VAR_rds_security_group_id="${RDS_SECURITY_GROUP_ID:-$(jq -r '.postgresql_db_security_group_id | (.value? // .) // empty' shared-outputs.json)}"
+    - ': "${TF_VAR_rds_endpoint:?RDS endpoint was not found in shared-outputs.json or RDS_ENDPOINT}"'
+    - ': "${TF_VAR_rds_security_group_id:?RDS security group was not found in shared-outputs.json or RDS_SECURITY_GROUP_ID}"'
+    - export TF_VAR_region="$AWS_REGION" TF_VAR_environment="$DEPLOY_ENV" TF_VAR_image_tag="$CI_COMMIT_SHA"
+    - export TF_VAR_shared_outputs_path="$TF_ROOT/shared-outputs.json" TF_VAR_admin_host_header="$OIE_HOSTNAME"
+    - export TF_VAR_alb_listener_rule_priority="$AWS_ALB_PRIORITY"
+    - export TF_VAR_nlb_security_group_id="${NLB_SECURITY_GROUP_ID:-$(jq -r '.nlb_security_group_id | (.value? // .) // empty' shared-outputs.json)}"
+    - ': "${TF_VAR_nlb_security_group_id:?NLB security group was not found in shared-outputs.json or NLB_SECURITY_GROUP_ID}"'
+    - terraform -chdir="$TF_ROOT" init -input=false -backend-config="environments/$DEPLOY_ENV.backend.hcl"
+    - export EFS_FILE_SYSTEM_ID="fs-0a6c233eeb1851e46"
+    - export MOUNT_TARGETS_JSON="$(aws efs describe-mount-targets --file-system-id "$EFS_FILE_SYSTEM_ID")"
+    - >-
+      for subnet in subnet-0a1f863cac98cbd9e subnet-0cc9d935835067ba9; do
+        mt_id="$(echo "$MOUNT_TARGETS_JSON" | jq -r --arg s "$subnet" '.MountTargets[] | select(.SubnetId == $s) | .MountTargetId')";
+        if [ -z "$mt_id" ]; then echo "No existing mount target found for $subnet" >&2; exit 1; fi;
+        if terraform -chdir="$TF_ROOT" state show "aws_efs_mount_target.appdata[\"$subnet\"]" >/dev/null 2>&1; then
+          echo "aws_efs_mount_target.appdata[\"$subnet\"] is already in state, skipping";
+        else
+          terraform -chdir="$TF_ROOT" import "aws_efs_mount_target.appdata[\"$subnet\"]" "$mt_id";
+        fi;
+      done
+
 deploy-aws-staging:
   extends: .terraform-apply
   stage: staging
