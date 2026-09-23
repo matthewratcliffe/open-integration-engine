@@ -160,7 +160,10 @@ plan-aws-staging:
 deploy-aws-staging:
   extends: .terraform-apply
   stage: staging
-  needs: [plan-aws-staging]
+  needs:
+    - job: plan-aws-staging
+    - job: fetch-shared-outputs
+      artifacts: true
   variables: {DEPLOY_ENV: staging}
   environment: {name: staging, url: "https://$OIE_STAGING_HOSTNAME"}
   rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
@@ -193,7 +196,10 @@ plan-aws-production:
 deploy-aws-production:
   extends: .terraform-apply
   stage: production
-  needs: [plan-aws-production]
+  needs:
+    - job: plan-aws-production
+    - job: fetch-shared-outputs
+      artifacts: true
   variables: {DEPLOY_ENV: production}
   environment: {name: production, url: "https://$OIE_PRODUCTION_HOSTNAME"}
   when: manual
