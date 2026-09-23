@@ -185,8 +185,25 @@ if [[ "$current_util_image" == "$placeholder_image" ]]; then
   kubectl -n "$ns" delete pod oie-utility-0 --wait=false
 fi
 
-kubectl -n "$ns" patch service oie-admin --type merge -p '{"spec":{"type":"LoadBalancer","selector":{"app.kubernetes.io/name":"oie","app.kubernetes.io/component":"utility"}}}'
+kubectl -n "$ns" patch service oie-admin --type merge -p '{"spec":{"selector":{"app.kubernetes.io/name":"oie","app.kubernetes.io/component":"utility"}}}'
 kubectl -n "$ns" patch service oie-channels --type merge -p '{"spec":{"type":"LoadBalancer","selector":{"app.kubernetes.io/name":"oie","app.kubernetes.io/component":"utility"}}}'
+
+# --- Web UI ingress -------------------------------------------------------------
+# oie-admin stays ClusterIP; the ingress (nginx) is what exposes it externally
+# at prod-dc.htrak.com. TLS_CERT_PEM/TLS_KEY_PEM are the wildcard *.htrak.com
+# cert/key shared across projects via GitLab instance-level CI/CD variables.
+if [[ -n "${TLS_CERT_PEM:-}" && -n "${TLS_KEY_PEM:-}" ]]; then
+  certfile="$(mktemp)"; keyfile_tls="$(mktemp)"
+  printf '%s' "$TLS_CERT_PEM" > "$certfile"
+  printf '%s' "$TLS_KEY_PEM" > "$keyfile_tls"
+  kubectl -n "$ns" create secret tls oie-admin-tls \
+    --cert="$certfile" --key="$keyfile_tls" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  rm -f "$certfile" "$keyfile_tls"
+else
+  echo "TLS_CERT_PEM/TLS_KEY_PEM not set -- ingress will require an existing 'oie-admin-tls' secret." >&2
+fi
+kubectl -n "$ns" apply -f deploy/k8s/ingress.yaml
 kubectl -n "$ns" delete poddisruptionbudget oie-worker --ignore-not-found
 
 # Wait for the utility node. On timeout, dump enough to diagnose WHY the pod is

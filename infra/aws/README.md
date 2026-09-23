@@ -30,9 +30,12 @@ Required GitLab variables:
   The RDS secret must contain `username` and `password`.
 
 Local Kubernetes additionally needs `KUBE_CONFIG_B64`, `DATABASE_URL`,
-`RDS_MASTER_USERNAME`, and `RDS_MASTER_PASSWORD`. It deploys one utility engine and
-exposes admin/API and channel traffic using `LoadBalancer` Services. The local
-cluster needs MetalLB, kube-vip, or another load-balancer controller.
+`RDS_MASTER_USERNAME`, and `RDS_MASTER_PASSWORD`. It deploys one utility engine;
+channel traffic is exposed via a `LoadBalancer` Service (the cluster needs
+MetalLB, kube-vip, or another load-balancer controller), and the admin/API web
+UI is exposed via an nginx Ingress at `prod-dc.htrak.com`, using the
+`TLS_CERT_PEM`/`TLS_KEY_PEM` instance-level CI/CD variables (the shared
+`*.htrak.com` cert) for its TLS secret.
 
 ## AWS access and port forwarding
 

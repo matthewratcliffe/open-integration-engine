@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: oie-admin
+  labels:
+    app.kubernetes.io/name: oie
+  annotations:
+    # oie-admin serves HTTPS on 8443 with the engine's own self-signed
+    # keystore cert -- nginx has to re-encrypt rather than treat it as HTTP,
+    # and can't validate a cert it doesn't have a CA for.
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/proxy-ssl-verify: "off"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - prod-dc.htrak.com
+      secretName: oie-admin-tls
+  rules:
+    - host: prod-dc.htrak.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: oie-admin
+                port:
+                  number: 8443
