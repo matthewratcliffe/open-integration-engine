@@ -190,7 +190,7 @@ kubectl -n "$ns" patch service oie-channels --type merge -p '{"spec":{"type":"Lo
 
 # --- Web UI ingress -------------------------------------------------------------
 # oie-admin stays ClusterIP; the ingress (nginx) is what exposes it externally
-# at prod-dc.htrak.com. TLS_CERT_PEM/TLS_KEY_PEM are the wildcard *.htrak.com
+# at oie-dc.htrak.com. TLS_CERT_PEM/TLS_KEY_PEM are the wildcard *.htrak.com
 # cert/key shared across projects via GitLab instance-level CI/CD variables.
 if [[ -n "${TLS_CERT_PEM:-}" && -n "${TLS_KEY_PEM:-}" ]]; then
   certfile="$(mktemp)"; keyfile_tls="$(mktemp)"

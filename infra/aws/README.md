@@ -33,7 +33,7 @@ Local Kubernetes additionally needs `KUBE_CONFIG_B64`, `DATABASE_URL`,
 `RDS_MASTER_USERNAME`, and `RDS_MASTER_PASSWORD`. It deploys one utility engine;
 channel traffic is exposed via a `LoadBalancer` Service (the cluster needs
 MetalLB, kube-vip, or another load-balancer controller), and the admin/API web
-UI is exposed via an nginx Ingress at `prod-dc.htrak.com`, using the
+UI is exposed via an nginx Ingress at `oie-dc.htrak.com`, using the
 `TLS_CERT_PEM`/`TLS_KEY_PEM` instance-level CI/CD variables (the shared
 `*.htrak.com` cert) for its TLS secret.
 

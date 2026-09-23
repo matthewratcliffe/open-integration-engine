@@ -14,10 +14,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - prod-dc.htrak.com
+        - oie-dc.htrak.com
       secretName: oie-admin-tls
   rules:
-    - host: prod-dc.htrak.com
+    - host: oie-dc.htrak.com
       http:
         paths:
           - path: /
