@@ -11,13 +11,20 @@ ports 8081 and 6661 and registers the task with them, but does not change the
 existing NLB. Each apply prints `existing_nlb_listener_requirements`; manually
 forward the corresponding existing-NLB TCP listener to each target-group ARN.
 
+The Terraform state backend (S3 bucket, key, region, locking) is defined per
+environment in `environments/<env>.backend.hcl` - a checked-in file, not a
+CI/CD variable, following the same pattern as `awsshardmoduleprod`.
+
 Required GitLab variables:
 
-- `AWS_REGION`, `AWS_TF_STATE_BUCKET`, `AWS_TF_LOCK_TABLE`
+- `AWS_REGION` (defaults to `ap-southeast-2` if unset)
 - `AWS_ALB_PRIORITY`, `OIE_STAGING_HOSTNAME`, `OIE_PRODUCTION_HOSTNAME`
-- Environment-scoped `RDS_DATABASE_NAME`, `RDS_MASTER_USERNAME`, and `RDS_MASTER_PASSWORD`; the RDS endpoint,
-  RDS security group, NLB security group, ECS cluster, ALB listener, subnets and
-  ECR repository are read from the shared artifact.
+- `ENCRYPTION_KEY` (instance-level) to decrypt the RDS master username/password
+  published (encrypted) by `awsshardmoduleprod` in `shared-outputs.json`; set
+  `RDS_MASTER_USERNAME`/`RDS_MASTER_PASSWORD` directly to override.
+- Environment-scoped `RDS_DATABASE_NAME`; the RDS endpoint, RDS security group,
+  NLB security group, ECS cluster, ALB listener, subnets and ECR repository
+  are read from the shared artifact.
   If the fetched artifact omits the RDS security-group ID, set `RDS_SECURITY_GROUP_ID` explicitly.
 - `OIE_ADMIN_PASSWORD`, `KEYSTORE_PASSWORD`, and `OIE_KEYSTORE_B64`.
   The RDS secret must contain `username` and `password`.

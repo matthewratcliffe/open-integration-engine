@@ -133,7 +133,7 @@ push-ecr:
     - export TF_VAR_region="$AWS_REGION" TF_VAR_environment="$DEPLOY_ENV" TF_VAR_image_tag="$CI_COMMIT_SHA"
     - export TF_VAR_shared_outputs_path="$TF_ROOT/shared-outputs.json" TF_VAR_admin_host_header="$OIE_HOSTNAME"
     - export TF_VAR_alb_listener_rule_priority="$AWS_ALB_PRIORITY" TF_VAR_nlb_security_group_id="$(jq -r '.nlb_security_group_id | (.value? // .) // empty' shared-outputs.json)"
-    - terraform -chdir="$TF_ROOT" init -backend-config="bucket=$AWS_TF_STATE_BUCKET" -backend-config="key=oie/$DEPLOY_ENV.tfstate" -backend-config="region=$AWS_REGION" -backend-config="dynamodb_table=$AWS_TF_LOCK_TABLE"
+    - terraform -chdir="$TF_ROOT" init -backend-config="environments/$DEPLOY_ENV.backend.hcl"
     - terraform -chdir="$TF_ROOT" plan -out="$CI_PROJECT_DIR/$DEPLOY_ENV.tfplan"
   artifacts:
     paths: ["$DEPLOY_ENV.tfplan", "infra/aws/.terraform", "infra/aws/.terraform.lock.hcl", "infra/aws/shared-outputs.json"]
@@ -146,7 +146,7 @@ push-ecr:
     entrypoint: [""]
   tags: [docker]
   script:
-    - terraform -chdir="$TF_ROOT" init -input=false -backend-config="bucket=$AWS_TF_STATE_BUCKET" -backend-config="key=oie/$DEPLOY_ENV.tfstate" -backend-config="region=$AWS_REGION" -backend-config="dynamodb_table=$AWS_TF_LOCK_TABLE"
+    - terraform -chdir="$TF_ROOT" init -input=false -backend-config="environments/$DEPLOY_ENV.backend.hcl"
     - terraform -chdir="$TF_ROOT" apply -auto-approve "$CI_PROJECT_DIR/$DEPLOY_ENV.tfplan"
     - terraform -chdir="$TF_ROOT" output existing_nlb_listener_requirements
 
