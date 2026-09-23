@@ -121,15 +121,15 @@ push-ecr:
     - aws secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&1 || aws secretsmanager create-secret --name "$SECRET_NAME" --secret-string file:///tmp/oie-secret.json >/dev/null
     - aws secretsmanager put-secret-value --secret-id "$SECRET_NAME" --secret-string file:///tmp/oie-secret.json >/dev/null
     - export TF_VAR_app_secret_arn=$(aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --query ARN --output text)
-    - export TF_VAR_rds_endpoint="${RDS_ENDPOINT:-$(jq -r '.postgresql_db_instance_address.value // .postgresql_db_instance_address // empty' shared-outputs.json)}"
+    - export TF_VAR_rds_endpoint="${RDS_ENDPOINT:-$(jq -r '.postgresql_db_instance_address | (.value? // .) // empty' shared-outputs.json)}"
     - ': "${RDS_DATABASE_NAME:?RDS_DATABASE_NAME must identify the database/schema on the shared RDS instance}"'
     - export TF_VAR_rds_database_name="$RDS_DATABASE_NAME"
-    - export TF_VAR_rds_security_group_id="${RDS_SECURITY_GROUP_ID:-$(jq -r '.postgresql_db_security_group_id.value // .postgresql_db_security_group_id // empty' shared-outputs.json)}"
+    - export TF_VAR_rds_security_group_id="${RDS_SECURITY_GROUP_ID:-$(jq -r '.postgresql_db_security_group_id | (.value? // .) // empty' shared-outputs.json)}"
     - ': "${TF_VAR_rds_endpoint:?RDS endpoint was not found in shared-outputs.json or RDS_ENDPOINT}"'
     - ': "${TF_VAR_rds_security_group_id:?RDS security group was not found in shared-outputs.json or RDS_SECURITY_GROUP_ID}"'
     - export TF_VAR_region="$AWS_REGION" TF_VAR_environment="$DEPLOY_ENV" TF_VAR_image_tag="$CI_COMMIT_SHA"
     - export TF_VAR_shared_outputs_path="$TF_ROOT/shared-outputs.json" TF_VAR_admin_host_header="$OIE_HOSTNAME"
-    - export TF_VAR_alb_listener_rule_priority="$AWS_ALB_PRIORITY" TF_VAR_nlb_security_group_id="$(jq -r '.nlb_security_group_id.value // .nlb_security_group_id // empty' shared-outputs.json)"
+    - export TF_VAR_alb_listener_rule_priority="$AWS_ALB_PRIORITY" TF_VAR_nlb_security_group_id="$(jq -r '.nlb_security_group_id | (.value? // .) // empty' shared-outputs.json)"
     - terraform -chdir="$TF_ROOT" init -backend-config="bucket=$AWS_TF_STATE_BUCKET" -backend-config="key=oie/$DEPLOY_ENV.tfstate" -backend-config="region=$AWS_REGION" -backend-config="dynamodb_table=$AWS_TF_LOCK_TABLE"
     - terraform -chdir="$TF_ROOT" plan -out="$CI_PROJECT_DIR/$DEPLOY_ENV.tfplan"
   artifacts:
