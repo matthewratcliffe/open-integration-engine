@@ -26,6 +26,18 @@ resource "aws_vpc_security_group_ingress_rule" "channel" {
   to_port                      = local.channel_port_range.max
   ip_protocol                  = "tcp"
 }
+resource "aws_vpc_security_group_ingress_rule" "nlb_channel_range" {
+  # Owned directly by this project rather than centralized in
+  # awsshardmoduleprod - each app on the shared NLB manages its own
+  # reserved port range as a standalone rule, so no two apps' Terraform
+  # configs fight over the same security group.
+  security_group_id = var.nlb_security_group_id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = local.channel_port_range.min
+  to_port           = local.channel_port_range.max
+  ip_protocol       = "tcp"
+  description       = "OIE (${var.environment}) channel traffic"
+}
 resource "aws_vpc_security_group_ingress_rule" "database" {
   security_group_id            = var.rds_security_group_id
   referenced_security_group_id = aws_security_group.task.id
