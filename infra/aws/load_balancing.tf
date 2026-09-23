@@ -28,9 +28,9 @@ resource "aws_lb_listener_rule" "admin" {
 }
 
 resource "aws_lb_target_group" "channel" {
-  for_each    = var.channel_ports
+  for_each    = local.channel_ports
   name        = "${local.name}-${each.value}"
-  port        = each.value
+  port        = tonumber(each.value)
   protocol    = "TCP"
   target_type = "ip"
   vpc_id      = local.shared.vpc_id

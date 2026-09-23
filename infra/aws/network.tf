@@ -17,11 +17,11 @@ resource "aws_vpc_security_group_ingress_rule" "admin" {
   ip_protocol                  = "tcp"
 }
 resource "aws_vpc_security_group_ingress_rule" "channel" {
-  for_each                     = var.channel_ports
+  for_each                     = local.channel_ports
   security_group_id            = aws_security_group.task.id
   referenced_security_group_id = var.nlb_security_group_id
-  from_port                    = each.value
-  to_port                      = each.value
+  from_port                    = tonumber(each.value)
+  to_port                      = tonumber(each.value)
   ip_protocol                  = "tcp"
 }
 resource "aws_vpc_security_group_ingress_rule" "database" {

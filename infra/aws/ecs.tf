@@ -93,11 +93,11 @@ resource "aws_ecs_service" "oie" {
   }
 
   dynamic "load_balancer" {
-    for_each = var.channel_ports
+    for_each = local.channel_ports
     content {
       target_group_arn = aws_lb_target_group.channel[load_balancer.value].arn
       container_name   = "oie"
-      container_port   = load_balancer.value
+      container_port   = tonumber(load_balancer.value)
     }
   }
 

@@ -13,4 +13,7 @@ locals {
     "KEYSTORE_PASSWORD",
     "KEYSTORE_BASE64",
   ]
+  # for_each only accepts maps or sets of strings, not the set(number) that
+  # var.channel_ports is declared as - stringify it once for reuse.
+  channel_ports = toset([for port in var.channel_ports : tostring(port)])
 }
