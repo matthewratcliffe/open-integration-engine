@@ -135,6 +135,16 @@ kubectl -n "$ns" create configmap oie-scripts \
 # --- Config + database ---------------------------------------------------------
 sed '/^---$/q' deploy/k8s/config.yaml | kubectl -n "$ns" apply -f -
 
+# The manifest pins the same community extensions as .env, Web Support (the
+# /oie-webadmin/ console) among them. A CI-supplied OIE_EXTENSION_URLS replaces
+# that list wholesale, so it must include Web Support itself if the console is
+# still wanted.
+if [[ -n "${OIE_EXTENSION_URLS:-}" ]]; then
+  echo "Using OIE_EXTENSION_URLS from the job environment."
+  kubectl -n "$ns" patch configmap oie-config --type merge \
+    -p "{\"data\":{\"OIE_EXTENSION_URLS\":\"$OIE_EXTENSION_URLS\"}}"
+fi
+
 if [[ -n "${DATABASE_URL:-}" && -n "${RDS_MASTER_USERNAME:-}" ]]; then
   # External database (the AWS/RDS path). Point the ConfigMap at it and do NOT
   # deploy the in-cluster Postgres.
@@ -168,6 +178,13 @@ kubectl -n "$ns" scale statefulset/oie-worker --replicas=0
 # OrderedReady races and can leave the first pod stuck. Patch first, start once.
 kubectl -n "$ns" set image statefulset/oie-utility "engine=$IMAGE_TAG"
 kubectl -n "$ns" patch statefulset oie-utility --type merge -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"gitlab-registry"}]}}}}'
+# envFrom is read only at container start, so a ConfigMap change (a new
+# extension in OIE_EXTENSION_URLS, say) would otherwise never reach a pod whose
+# image tag did not change. Stamping the config's hash onto the pod template
+# makes any change roll the pod, and leaves it alone when nothing changed.
+config_hash="$(kubectl -n "$ns" get configmap oie-config -o jsonpath='{.data}' | sha256sum | cut -c1-16)"
+kubectl -n "$ns" patch statefulset oie-utility --type merge \
+  -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"oie.local/config-hash\":\"$config_hash\"}}}}}"
 kubectl -n "$ns" scale statefulset/oie-utility --replicas=1
 
 # Heal a wedged pod. Under podManagementPolicy: OrderedReady + RollingUpdate,
