@@ -34,6 +34,30 @@ resource "aws_efs_mount_target" "appdata" {
   security_groups = [aws_security_group.efs.id]
 }
 
+# The image runs as the unprivileged "engine" user (uid/gid 1000), but a fresh
+# EFS root is owned by root, so the engine could not write appdata/. The access
+# point presents its own directory, created owned by 1000 on first mount, and
+# forces every file operation through it to run as 1000.
+resource "aws_efs_access_point" "appdata" {
+  file_system_id = aws_efs_file_system.appdata.id
+
+  posix_user {
+    uid = 1000
+    gid = 1000
+  }
+
+  root_directory {
+    path = "/appdata"
+    creation_info {
+      owner_uid   = 1000
+      owner_gid   = 1000
+      permissions = "0750"
+    }
+  }
+
+  tags = merge(local.tags, { Name = "${local.name}-appdata" })
+}
+
 resource "aws_cloudwatch_log_group" "oie" {
   name              = "/ecs/${local.name}"
   retention_in_days = 30

@@ -28,4 +28,15 @@ locals {
     production = { min = 50500, max = 50600 }
   }
   channel_port_range = local.channel_port_ranges[var.environment]
+
+  # Run by the db-init container. The statement goes through stdin rather than
+  # -c so psql substitutes :'db' (a quoted literal) and %I quotes the name as an
+  # identifier - environment database names contain hyphens.
+  db_init_script = <<-EOT
+    set -eu
+    echo "[db-init] ensuring database $OIE_DATABASE_NAME exists on $PGHOST"
+    printf '%s\n' "SELECT format('CREATE DATABASE %I', :'db') WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db')\gexec" \
+      | psql -v ON_ERROR_STOP=1 -v db="$OIE_DATABASE_NAME"
+    echo "[db-init] done"
+  EOT
 }
