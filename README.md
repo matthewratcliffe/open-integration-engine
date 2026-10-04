@@ -270,7 +270,7 @@ docker compose up -d
 | Web Support 1.0.3 | the console at `/oie-webadmin/` |
 | Sentinel 1.1.0 | channel monitoring, rendered inside the console |
 | Thread Viewer 1.0.6 | thread inspection, rendered inside the console |
-| TLS Manager 1.0.7 | its own app at `/tls-manager/` — an open-source alternative worth weighing against Zen |
+| TLS Manager 1.0.8 | its own app at `/tls-manager/` — an open-source alternative worth weighing against Zen |
 
 Every URL is checksum-pinned and the entrypoint refuses to start on a mismatch.
 These archives hold jars and WARs the engine loads into its own JVM, so treat an

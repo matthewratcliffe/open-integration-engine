@@ -1,7 +1,7 @@
 {
     "id": "tls-manager",
     "name": "TLS Manager",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "author": "NovaMap Health (bridge by this repo)",
     "description": "Certificate and TLS management, surfaced in the console sidebar.",
     "enabled": true,
