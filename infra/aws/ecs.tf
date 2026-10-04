@@ -74,10 +74,19 @@ resource "aws_ecs_task_definition" "oie" {
       { name = "SERVER_STARTUP_DEPLOY", value = "true" },
     ]
 
-    secrets = [for key in local.app_secret_keys : {
-      name      = key
-      valueFrom = "${var.app_secret_arn}:${key}::"
-    }]
+    # The entrypoint reads the keystore password from KEYSTORE_STOREPASS and
+    # KEYSTORE_KEYPASS (keystore.storepass/keypass), not KEYSTORE_PASSWORD -
+    # map the one secret onto both, as compose and k8s do.
+    secrets = concat(
+      [for key in local.app_secret_keys : {
+        name      = key
+        valueFrom = "${var.app_secret_arn}:${key}::"
+      }],
+      [for name in ["KEYSTORE_STOREPASS", "KEYSTORE_KEYPASS"] : {
+        name      = name
+        valueFrom = "${var.app_secret_arn}:KEYSTORE_PASSWORD::"
+      }]
+    )
     mountPoints = [{
       sourceVolume  = "appdata"
       containerPath = "/opt/engine/appdata"
