@@ -100,6 +100,18 @@ push-ecr:
     - docker pull "$IMAGE_TAG"
     - docker tag "$IMAGE_TAG" "$AWS_ECR_REPOSITORY_URL:$CI_COMMIT_SHA"
     - docker push "$AWS_ECR_REPOSITORY_URL:$CI_COMMIT_SHA"
+    # The ECS task's db-init container runs postgres:17-alpine, but the private
+    # subnets have no internet route, so Fargate can only pull from our ECR.
+    # Mirror it once under a fixed tag (infra/aws/ecs.tf references the same
+    # tag); skip when present, in case the repository has immutable tags.
+    - |
+      if aws ecr describe-images --repository-name "${AWS_ECR_REPOSITORY_URL#*/}" --image-ids imageTag=postgres-17-alpine >/dev/null 2>&1; then
+        echo "postgres-17-alpine already in ECR"
+      else
+        docker pull public.ecr.aws/docker/library/postgres:17-alpine
+        docker tag public.ecr.aws/docker/library/postgres:17-alpine "$AWS_ECR_REPOSITORY_URL:postgres-17-alpine"
+        docker push "$AWS_ECR_REPOSITORY_URL:postgres-17-alpine"
+      fi
   rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
 
 .terraform-plan:

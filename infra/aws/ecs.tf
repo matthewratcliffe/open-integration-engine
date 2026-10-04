@@ -22,8 +22,10 @@ resource "aws_ecs_task_definition" "oie" {
     # Each environment gets its own database on the shared RDS instance, and
     # nothing else creates it. Create it (if missing) before the engine starts;
     # the engine itself builds the schema inside it on first boot.
-    name      = "db-init"
-    image     = "public.ecr.aws/docker/library/postgres:17-alpine"
+    name = "db-init"
+    # Mirrored into our ECR by the push-ecr CI job: the task has no route to
+    # public registries.
+    image     = "${local.shared.ecr_repository_url}:postgres-17-alpine"
     essential = false
 
     entryPoint = ["/bin/sh", "-c"]
