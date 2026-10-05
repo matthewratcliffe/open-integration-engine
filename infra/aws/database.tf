@@ -68,9 +68,30 @@ resource "terraform_data" "database" {
     }
     command = <<-EOT
       set -eu
-      task_arn=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "$TASK_DEFINITION" \
-        --launch-type FARGATE --network-configuration "$NETWORK_CONFIG" \
-        --query 'tasks[0].taskArn' --output text)
+      # On a first apply the execution role was created seconds ago, and IAM is
+      # eventually consistent: ECS rejects it ("unable to assume the role")
+      # until it propagates. Retry that case only, for up to two minutes.
+      attempt=0
+      while :; do
+        attempt=$((attempt + 1))
+        if out=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "$TASK_DEFINITION" \
+          --launch-type FARGATE --network-configuration "$NETWORK_CONFIG" \
+          --query 'tasks[0].taskArn' --output text 2>&1); then
+          task_arn="$out"
+          break
+        fi
+        case "$out" in
+          *"unable to assume the role"*)
+            if [ "$attempt" -lt 12 ]; then
+              echo "db-init: execution role not assumable yet (new IAM role propagating), retrying in 10s"
+              sleep 10
+              continue
+            fi
+            ;;
+        esac
+        echo "$out" >&2
+        exit 1
+      done
       if [ -z "$task_arn" ] || [ "$task_arn" = "None" ]; then
         echo "db-init: run-task did not start a task" >&2
         exit 1
