@@ -30,6 +30,9 @@ Required GitLab variables:
 
 - `AWS_REGION` (defaults to `ap-southeast-2` if unset)
 - `AWS_ALB_PRIORITY`, `OIE_STAGING_HOSTNAME`, `OIE_PRODUCTION_HOSTNAME`
+- Environment-scoped `AWS_ALB_REDIRECT_PRIORITY`: the shared-listener priority
+  of the rule redirecting a bare `/` to `/oie-webadmin/`. It must be lower than
+  `AWS_ALB_PRIORITY` and unused by other apps (staging 100, production 101).
 - `ENCRYPTION_KEY` (instance-level) to decrypt the RDS master username/password
   published (encrypted) by `awsshardmoduleprod` in `shared-outputs.json`; set
   `RDS_MASTER_USERNAME`/`RDS_MASTER_PASSWORD` directly to override.

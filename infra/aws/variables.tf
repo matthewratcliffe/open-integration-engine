@@ -4,6 +4,16 @@ variable "shared_outputs_path" { type = string }
 variable "image_tag" { type = string }
 variable "admin_host_header" { type = string }
 variable "alb_listener_rule_priority" { type = number }
+
+variable "alb_redirect_rule_priority" {
+  description = "Priority of the / -> /oie-webadmin/ redirect on the shared ALB listener. Must be lower than alb_listener_rule_priority (it is evaluated first) and unused by any other app's rule."
+  type        = number
+
+  validation {
+    condition     = var.alb_redirect_rule_priority < var.alb_listener_rule_priority
+    error_message = "alb_redirect_rule_priority must be lower than alb_listener_rule_priority, or the forward rule matches / first."
+  }
+}
 variable "app_secret_arn" { type = string }
 variable "rds_endpoint" { type = string }
 variable "rds_database_name" { type = string }

@@ -32,6 +32,29 @@ resource "aws_lb_listener_rule" "admin" {
   }
 }
 
+# A bare https://host/ goes straight to the web console, as the k8s ingress's
+# app-root does. Only the exact path "/" matches; /api/, /webstart.jnlp and the
+# rest fall through to the forward rule above, so this needs the lower
+# (earlier-evaluated) priority. 302, not 301, so browsers don't cache it.
+resource "aws_lb_listener_rule" "admin_root_redirect" {
+  listener_arn = local.shared.alb_https_listener_arn
+  priority     = var.alb_redirect_rule_priority
+
+  condition {
+    host_header { values = [var.admin_host_header] }
+  }
+  condition {
+    path_pattern { values = ["/"] }
+  }
+  action {
+    type = "redirect"
+    redirect {
+      path        = "/oie-webadmin/"
+      status_code = "HTTP_302"
+    }
+  }
+}
+
 resource "aws_lb_target_group" "channel" {
   for_each    = local.channel_ports
   name        = "${local.name}-${each.value}"
