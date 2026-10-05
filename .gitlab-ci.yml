@@ -160,6 +160,21 @@ push-ecr:
     - export TF_VAR_alb_listener_rule_priority="$AWS_ALB_PRIORITY"
     - ': "${AWS_ALB_REDIRECT_PRIORITY:?AWS_ALB_REDIRECT_PRIORITY must be set - the / redirect rule priority, lower than AWS_ALB_PRIORITY}"'
     - export TF_VAR_alb_redirect_rule_priority="$AWS_ALB_REDIRECT_PRIORITY"
+    # The HTTPS listener is shared with other apps, and CreateRule fails mid-apply
+    # on a taken priority. List the rules and fail here instead, naming the clash.
+    - |
+      listener="$(jq -r '.alb_https_listener_arn | (.value? // .) // empty' shared-outputs.json)"
+      aws elbv2 describe-rules --listener-arn "$listener" --output json \
+        | jq -r '.Rules[] | select(.IsDefault | not) | "\(.Priority) \([.Conditions[] | select(.Field == "host-header") | (.HostHeaderConfig.Values // .Values // [])[]] | join(","))"' \
+        | sort -n > /tmp/alb-rules.txt
+      echo "Shared ALB listener rules (priority host):"; cat /tmp/alb-rules.txt
+      for p in "$AWS_ALB_PRIORITY" "$AWS_ALB_REDIRECT_PRIORITY"; do
+        clash="$(awk -v p="$p" -v h="$OIE_HOSTNAME" '$1 == p && $2 != h' /tmp/alb-rules.txt)"
+        if [ -n "$clash" ]; then
+          echo "ALB listener priority $p is already used by another app's rule ($clash) - pick an unused one" >&2
+          exit 1
+        fi
+      done
     - export TF_VAR_nlb_security_group_id="${NLB_SECURITY_GROUP_ID:-$(jq -r '.nlb_security_group_id | (.value? // .) // empty' shared-outputs.json)}"
     - ': "${TF_VAR_nlb_security_group_id:?NLB security group was not found in shared-outputs.json or NLB_SECURITY_GROUP_ID}"'
     - export TF_VAR_nlb_arn="${NLB_ARN:-$(jq -r '.nlb_arn | (.value? // .) // empty' shared-outputs.json)}"
