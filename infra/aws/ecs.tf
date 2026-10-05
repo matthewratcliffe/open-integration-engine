@@ -38,6 +38,9 @@ resource "aws_ecs_task_definition" "oie" {
       { name = "OIE_CLUSTER_ENABLED", value = "false" },
       { name = "SERVER_STARTUP_DEPLOY", value = "true" },
       { name = "KEYSTORE_RESET", value = var.keystore_reset },
+      # Downloaded from GitHub through the VPC's NAT gateway, and cached on EFS
+      # (appdata/extension-cache) so a restart survives a failed download.
+      { name = "OIE_EXTENSION_URLS", value = join(",", var.extension_urls) },
     ]
 
     # The entrypoint reads the keystore password from KEYSTORE_STOREPASS and

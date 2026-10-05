@@ -164,6 +164,7 @@ push-ecr:
     - ': "${TF_VAR_nlb_arn:?NLB ARN was not found in shared-outputs.json or NLB_ARN}"'
     - export TF_VAR_efs_mount_target_subnet_ids="${EFS_MOUNT_TARGET_SUBNET_IDS:-[]}"
     - export TF_VAR_keystore_reset="${KEYSTORE_RESET:-}"
+    - 'if [ -n "${OIE_EXTENSION_URLS:-}" ]; then export TF_VAR_extension_urls="$(jq -cRn --arg s "$OIE_EXTENSION_URLS" ''$s | split(",")'')"; fi'
     - terraform -chdir="$TF_ROOT" init -backend-config="environments/$DEPLOY_ENV.backend.hcl"
     - terraform -chdir="$TF_ROOT" plan -out="$CI_PROJECT_DIR/$DEPLOY_ENV.tfplan"
   artifacts:

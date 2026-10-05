@@ -39,3 +39,15 @@ variable "keystore_reset" {
   type        = string
   default     = ""
 }
+
+variable "extension_urls" {
+  description = "Community extensions installed at engine start (OIE_EXTENSION_URLS), each pinned as sha256:<hex>@<url> - they run inside the engine's JVM. The same list as .env and deploy/k8s/config.yaml; keep them in step when bumping a version. Web Support serves the console at /oie-webadmin/, which is a 404 without it. CI replaces the whole list when OIE_EXTENSION_URLS is set."
+  type        = list(string)
+  default = [
+    "sha256:11014e5fc2a2b9ca5ef5c6750c42fc65ce832b3f7e918e076f5e1f9fa71fbf9a@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.0.3/websupport-1.0.3.zip",
+    "sha256:c878511360f7efbd1db3757c8a8f46438dff03e4ca700d5f049fb21dc65c90e9@https://github.com/gibson9583/oie-sentinel/releases/download/v1.1.0/sentinel-1.1.0.zip",
+    "sha256:7597579a6cbe54070ba9b64c1ee3caaef6433e04997cc16cd4d2c13ebc9201da@https://github.com/gibson9583/engine-thread-viewer/releases/download/v1.0.6/thread-viewer-1.0.6.zip",
+    "sha256:a78a0db772de712f99b5842968ebc341f739d00b48c18be2f4cfa923283ed78c@https://github.com/NovaMap-Health/tls-manager-plugin/releases/download/1.0.8/tls-manager-1.0.8.zip",
+    "sha256:a18d208ca4e6ca0700790d971fde5b4212df70b3dc5b34ae3cc9032afdb3a5c2@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.1/oidcauth-1.0.1.zip",
+  ]
+}
