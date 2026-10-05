@@ -1,7 +1,25 @@
 # AWS ECS deployment
 
-Terraform deploys one OIE Fargate task per environment. Staging applies on the
-GitLab default branch; production is a manual job. The shared ECS, ALB, NLB,
+Terraform deploys one OIE Fargate task per deployment - an environment plus an
+instance. Staging is the single instance `oie` (`au-staging-oie`) and applies on
+the GitLab default branch. Production runs numbered instances - `oie1` at
+`oie1.htrak.com` today, `oie2` and so on later - each a separate engine with its
+own service, EFS, database, keystore, secret, state and NLB port range, deployed
+by its own manual job. Each instance's variables are scoped to the GitLab
+environment `production/<instance>`.
+
+To add a production instance (e.g. `oie2`):
+
+1. Copy the `plan-aws-production-oie1` / `deploy-aws-production-oie1` jobs in
+   `.gitlab-ci.yml`, changing `DEPLOY_INSTANCE` (and the `needs` job name).
+2. Add `environments/production-oie2.backend.hcl` with its own state `key`.
+3. Add a `"production/oie2"` NLB port range to `locals.channel_port_ranges`.
+4. Set `RDS_DATABASE_NAME`, `AWS_ALB_PRIORITY`, `AWS_ALB_REDIRECT_PRIORITY`,
+   `KEYSTORE_PASSWORD` and `OIE_KEYSTORE_B64` scoped to `production/oie2`, with
+   unused ALB priorities (the plan job lists the listener's rules).
+5. Point DNS for `oie2.htrak.com` at the shared ALB.
+
+The hostname is `<instance>.htrak.com`. The shared ECS, ALB, NLB,
 VPC, subnets, ECR and RDS values come from the `shared-outputs.json` artifact
 fetched from `infra/awsshardmoduleprod`.
 
@@ -23,16 +41,17 @@ This needs the `aws` CLI in the apply job and `ecs:RunTask`/`ecs:DescribeTasks`
 logs are in the service's CloudWatch log group under the `db-init` prefix.
 
 The Terraform state backend (S3 bucket, key, region, locking) is defined per
-environment in `environments/<env>.backend.hcl` - a checked-in file, not a
+deployment in `environments/<env>-<instance>.backend.hcl` - a checked-in file, not a
 CI/CD variable, following the same pattern as `awsshardmoduleprod`.
 
 Required GitLab variables:
 
 - `AWS_REGION` (defaults to `ap-southeast-2` if unset)
-- `AWS_ALB_PRIORITY`, `OIE_STAGING_HOSTNAME`, `OIE_PRODUCTION_HOSTNAME`
+- Environment-scoped `AWS_ALB_PRIORITY`; `OIE_STAGING_HOSTNAME` (production
+  hostnames are `<instance>.htrak.com`)
 - Environment-scoped `AWS_ALB_REDIRECT_PRIORITY`: the shared-listener priority
   of the rule redirecting a bare `/` to `/oie-webadmin/`. It must be lower than
-  `AWS_ALB_PRIORITY` and unused by other apps (staging 100, production 101).
+  `AWS_ALB_PRIORITY` and unused by other apps (staging 105, production/oie1 106).
 - `ENCRYPTION_KEY` (instance-level) to decrypt the RDS master username/password
   published (encrypted) by `awsshardmoduleprod` in `shared-outputs.json`; set
   `RDS_MASTER_USERNAME`/`RDS_MASTER_PASSWORD` directly to override.

@@ -1,5 +1,16 @@
 variable "region" { type = string }
 variable "environment" { type = string }
+
+variable "instance" {
+  description = "Which engine within the environment: staging runs the single instance \"oie\", production runs oie1, oie2, ... Each instance is a separate engine with its own service, EFS, database, keystore, state and NLB port range."
+  type        = string
+  default     = "oie"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9]{1,9}$", var.instance))
+    error_message = "instance must be 2-10 lowercase letters/digits, starting with a letter (it goes into resource names with length limits)."
+  }
+}
 variable "shared_outputs_path" { type = string }
 variable "image_tag" { type = string }
 variable "admin_host_header" { type = string }
@@ -20,7 +31,7 @@ variable "rds_database_name" { type = string }
 variable "rds_security_group_id" { type = string }
 
 variable "channel_ports" {
-  description = "Ports for channels to expose via the NLB. Empty by default - no channels are deployed until you add some. Each port must fall within this environment's reserved NLB port range (staging 50000-50100, production 50500-50600 - see locals.channel_port_ranges)."
+  description = "Ports for channels to expose via the NLB. Empty by default - no channels are deployed until you add some. Each port must fall within this deployment's reserved NLB port range (staging/oie 50000-50100, production/oie1 50500-50600 - see locals.channel_port_ranges)."
   type        = set(number)
   default     = []
 }

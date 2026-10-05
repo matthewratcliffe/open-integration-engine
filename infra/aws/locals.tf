@@ -1,7 +1,10 @@
 locals {
   shared_raw = jsondecode(file(var.shared_outputs_path))
   shared     = { for key, value in local.shared_raw : key => try(value.value, value) }
-  name       = "au-${var.environment}-oie"
+  # One engine per environment + instance. Staging is the single instance
+  # "oie" (au-staging-oie, unchanged); production instances are oie1, oie2, ...
+  name       = "au-${var.environment}-${var.instance}"
+  deployment = "${var.environment}/${var.instance}"
   tags = {
     Application = "oie"
     Environment = var.environment
@@ -17,17 +20,17 @@ locals {
   # var.channel_ports is declared as - stringify it once for reuse.
   channel_ports = toset([for port in var.channel_ports : tostring(port)])
 
-  # Each environment gets its own reserved block of NLB ports for channel
-  # traffic, so staging and production channels can never collide on the
-  # shared NLB. This only reserves the range (the security-group ingress
+  # Each deployment (environment/instance) gets its own reserved block of NLB
+  # ports for channel traffic, so no two engines' channels can collide on the
+  # shared NLB. A new instance needs its own entry here. This only reserves the range (the security-group ingress
   # rule opens it in full) - no channels are deployed by default, and
   # individual channel ports (var.channel_ports) are only allowed, and only
   # get their own NLB listener/target group, once actually added.
   channel_port_ranges = {
-    staging    = { min = 50000, max = 50100 }
-    production = { min = 50500, max = 50600 }
+    "staging/oie"     = { min = 50000, max = 50100 }
+    "production/oie1" = { min = 50500, max = 50600 }
   }
-  channel_port_range = local.channel_port_ranges[var.environment]
+  channel_port_range = local.channel_port_ranges[local.deployment]
 
   # The engine container's start command. appdata (EFS) persists across tasks,
   # and after first boot the keystore there also holds the engine's

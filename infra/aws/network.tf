@@ -36,7 +36,7 @@ resource "aws_vpc_security_group_ingress_rule" "nlb_channel_range" {
   from_port         = local.channel_port_range.min
   to_port           = local.channel_port_range.max
   ip_protocol       = "tcp"
-  description       = "OIE (${var.environment}) channel traffic"
+  description       = "OIE (${local.deployment}) channel traffic"
 }
 resource "aws_vpc_security_group_ingress_rule" "database" {
   security_group_id            = var.rds_security_group_id
