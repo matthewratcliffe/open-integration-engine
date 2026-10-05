@@ -57,6 +57,7 @@ resource "terraform_data" "database" {
       AWS_REGION      = var.region
       CLUSTER         = local.shared.ecs_cluster_id
       TASK_DEFINITION = aws_ecs_task_definition.db_init.arn
+      LOG_GROUP       = aws_cloudwatch_log_group.oie.name
       NETWORK_CONFIG = jsonencode({
         awsvpcConfiguration = {
           subnets        = local.shared.private_subnet_ids
@@ -76,6 +77,11 @@ resource "terraform_data" "database" {
       fi
       echo "db-init: started $task_arn, waiting for it to stop"
       aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$task_arn"
+      # Surface the task's own output here, so the CI log shows what it did.
+      aws logs get-log-events --log-group-name "$LOG_GROUP" \
+        --log-stream-name "db-init/db-init/$${task_arn##*/}" --start-from-head \
+        --query 'events[*].[message]' --output text \
+        || echo "db-init: could not read the task log (see CloudWatch $LOG_GROUP)"
       exit_code=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task_arn" \
         --query 'tasks[0].containers[0].exitCode' --output text)
       if [ "$exit_code" != "0" ]; then

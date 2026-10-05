@@ -39,6 +39,16 @@ Required GitLab variables:
   If the fetched artifact omits the RDS security-group ID, set `RDS_SECURITY_GROUP_ID` explicitly.
 - `OIE_ADMIN_PASSWORD`, `KEYSTORE_PASSWORD`, and `OIE_KEYSTORE_B64`.
   The RDS secret must contain `username` and `password`.
+  The plan job fails if `KEYSTORE_PASSWORD` does not open `OIE_KEYSTORE_B64`.
+  The supplied keystore is installed only when EFS has none yet: after first
+  boot the keystore on EFS also holds the engine's data-encryption key, so it
+  is never silently replaced.
+- Optional environment-scoped `KEYSTORE_RESET` to replace an environment's
+  keystore deliberately. Set it to a new value (e.g. `2026-10-05`); on its next
+  start the engine moves `appdata/keystore.jks` to
+  `keystore.jks.replaced-<value>` and installs `OIE_KEYSTORE_B64` (or generates
+  one). Data encrypted under the old keystore is unreadable until it is moved
+  back, so only do this where that is acceptable.
 
 Local Kubernetes additionally needs `KUBE_CONFIG_B64`, `DATABASE_URL`,
 `RDS_MASTER_USERNAME`, and `RDS_MASTER_PASSWORD`. It deploys one utility engine;

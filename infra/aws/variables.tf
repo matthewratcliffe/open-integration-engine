@@ -33,3 +33,9 @@ variable "task_memory" {
   type    = string
   default = "4096"
 }
+
+variable "keystore_reset" {
+  description = "Set to a new value (e.g. a date) to replace this environment's keystore: on its next start the engine moves appdata/keystore.jks aside to keystore.jks.replaced-<value> and installs KEYSTORE_BASE64, or generates a new one. Anything encrypted under the old keystore stays unreadable until it is moved back. Empty (the default) never resets."
+  type        = string
+  default     = ""
+}

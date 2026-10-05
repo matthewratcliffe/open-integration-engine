@@ -24,9 +24,7 @@ resource "aws_ecs_task_definition" "oie" {
     essential = true
 
     entryPoint = ["/bin/bash", "-lc"]
-    command = [
-      "if [[ -n \"$KEYSTORE_BASE64\" && ! -s /opt/engine/appdata/keystore.jks ]]; then printf '%s' \"$KEYSTORE_BASE64\" | base64 -d > /opt/engine/appdata/keystore.jks && chmod 600 /opt/engine/appdata/keystore.jks; fi; exec /usr/local/bin/oie-entrypoint ./oieserver"
-    ]
+    command    = [local.engine_start_script]
 
     portMappings = concat(
       [{ containerPort = 8443, protocol = "tcp" }],
@@ -39,6 +37,7 @@ resource "aws_ecs_task_definition" "oie" {
       { name = "OIE_HEAP_MAX", value = "2g" },
       { name = "OIE_CLUSTER_ENABLED", value = "false" },
       { name = "SERVER_STARTUP_DEPLOY", value = "true" },
+      { name = "KEYSTORE_RESET", value = var.keystore_reset },
     ]
 
     # The entrypoint reads the keystore password from KEYSTORE_STOREPASS and

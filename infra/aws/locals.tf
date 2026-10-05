@@ -29,6 +29,30 @@ locals {
   }
   channel_port_range = local.channel_port_ranges[var.environment]
 
+  # The engine container's start command. appdata (EFS) persists across tasks,
+  # and after first boot the keystore there also holds the engine's
+  # data-encryption key, so KEYSTORE_BASE64 is only installed when there is no
+  # keystore yet. A new KEYSTORE_RESET value moves the existing one aside first
+  # (kept, not deleted); appdata/.keystore-reset records which value was applied
+  # so a reset happens once, not on every restart.
+  engine_start_script = <<-EOT
+    set -eu
+    appdata=/opt/engine/appdata
+    if [[ -n "$${KEYSTORE_RESET:-}" && "$(cat "$appdata/.keystore-reset" 2>/dev/null || true)" != "$KEYSTORE_RESET" ]]; then
+      if [[ -e "$appdata/keystore.jks" ]]; then
+        mv "$appdata/keystore.jks" "$appdata/keystore.jks.replaced-$KEYSTORE_RESET"
+        echo "[keystore] reset $KEYSTORE_RESET: moved keystore.jks to keystore.jks.replaced-$KEYSTORE_RESET"
+      fi
+      printf '%s' "$KEYSTORE_RESET" > "$appdata/.keystore-reset"
+    fi
+    if [[ -n "$${KEYSTORE_BASE64:-}" && ! -s "$appdata/keystore.jks" ]]; then
+      printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$appdata/keystore.jks"
+      chmod 600 "$appdata/keystore.jks"
+      echo "[keystore] installed the supplied keystore"
+    fi
+    exec /usr/local/bin/oie-entrypoint ./oieserver
+  EOT
+
   # Run by the db-init task (database.tf). The statement goes through stdin
   # rather than -c so psql substitutes :'db' (a quoted literal) and %I quotes
   # the name as an identifier - environment database names contain hyphens.
@@ -37,6 +61,14 @@ locals {
     echo "[db-init] ensuring database $OIE_DATABASE_NAME exists on $PGHOST"
     printf '%s\n' "SELECT format('CREATE DATABASE %I', :'db') WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db')\gexec" \
       | psql -v ON_ERROR_STOP=1 -v db="$OIE_DATABASE_NAME"
-    echo "[db-init] done"
+    # Read it back so the log proves the database is there, not just that psql
+    # exited cleanly.
+    found=$(printf '%s\n' "SELECT datname FROM pg_database WHERE datname = :'db'" \
+      | psql -v ON_ERROR_STOP=1 -tA -v db="$OIE_DATABASE_NAME")
+    if [ "$found" != "$OIE_DATABASE_NAME" ]; then
+      echo "[db-init] database $OIE_DATABASE_NAME not found on $PGHOST after create" >&2
+      exit 1
+    fi
+    echo "[db-init] database $OIE_DATABASE_NAME present on $PGHOST"
   EOT
 }
