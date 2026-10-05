@@ -15,6 +15,13 @@ requires `nlb_arn` from `awsshardmoduleprod`'s shared output, and the NLB's own
 security group (`awsshardmoduleprod`) needs inbound rules for these ports for
 external channel clients to actually reach them.
 
+Each environment's database (`RDS_DATABASE_NAME`) on the shared RDS instance is
+created by Terraform during apply (`database.tf`): it runs a one-off `db-init`
+Fargate task in the VPC and fails the apply if the database can't be created.
+This needs the `aws` CLI in the apply job and `ecs:RunTask`/`ecs:DescribeTasks`
+(plus `iam:PassRole` on the execution role) for the CI deploy role. The task's
+logs are in the service's CloudWatch log group under the `db-init` prefix.
+
 The Terraform state backend (S3 bucket, key, region, locking) is defined per
 environment in `environments/<env>.backend.hcl` - a checked-in file, not a
 CI/CD variable, following the same pattern as `awsshardmoduleprod`.

@@ -29,9 +29,9 @@ locals {
   }
   channel_port_range = local.channel_port_ranges[var.environment]
 
-  # Run by the db-init container. The statement goes through stdin rather than
-  # -c so psql substitutes :'db' (a quoted literal) and %I quotes the name as an
-  # identifier - environment database names contain hyphens.
+  # Run by the db-init task (database.tf). The statement goes through stdin
+  # rather than -c so psql substitutes :'db' (a quoted literal) and %I quotes
+  # the name as an identifier - environment database names contain hyphens.
   db_init_script = <<-EOT
     set -eu
     echo "[db-init] ensuring database $OIE_DATABASE_NAME exists on $PGHOST"

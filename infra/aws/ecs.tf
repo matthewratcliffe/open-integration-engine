@@ -19,44 +19,9 @@ resource "aws_ecs_task_definition" "oie" {
   }
 
   container_definitions = jsonencode([{
-    # Each environment gets its own database on the shared RDS instance, and
-    # nothing else creates it. Create it (if missing) before the engine starts;
-    # the engine itself builds the schema inside it on first boot.
-    name = "db-init"
-    # Mirrored into our ECR by the push-ecr CI job: the task has no route to
-    # public registries.
-    image     = "${local.shared.ecr_repository_url}:postgres-17-alpine"
-    essential = false
-
-    entryPoint = ["/bin/sh", "-c"]
-    command    = [local.db_init_script]
-
-    environment = [
-      { name = "PGHOST", value = split(":", var.rds_endpoint)[0] },
-      { name = "PGPORT", value = try(split(":", var.rds_endpoint)[1], "5432") },
-      { name = "PGDATABASE", value = "postgres" },
-      { name = "PGSSLMODE", value = "require" },
-      { name = "OIE_DATABASE_NAME", value = var.rds_database_name },
-    ]
-    secrets = [
-      { name = "PGUSER", valueFrom = "${var.app_secret_arn}:DATABASE_USERNAME::" },
-      { name = "PGPASSWORD", valueFrom = "${var.app_secret_arn}:DATABASE_PASSWORD::" },
-    ]
-
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        awslogs-group         = aws_cloudwatch_log_group.oie.name
-        awslogs-region        = var.region
-        awslogs-stream-prefix = "db-init"
-      }
-    }
-    }, {
     name      = "oie"
     image     = "${local.shared.ecr_repository_url}:${var.image_tag}"
     essential = true
-
-    dependsOn = [{ containerName = "db-init", condition = "SUCCESS" }]
 
     entryPoint = ["/bin/bash", "-lc"]
     command = [
@@ -148,6 +113,6 @@ resource "aws_ecs_service" "oie" {
     }
   }
 
-  depends_on = [aws_lb_listener_rule.admin, aws_lb_listener.channel, aws_efs_mount_target.appdata]
+  depends_on = [aws_lb_listener_rule.admin, aws_lb_listener.channel, aws_efs_mount_target.appdata, terraform_data.database]
   tags       = local.tags
 }
