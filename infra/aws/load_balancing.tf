@@ -5,10 +5,15 @@ resource "aws_lb_target_group" "admin" {
   target_type = "ip"
   vpc_id      = local.shared.vpc_id
 
+  # Not /api/server/status: the API rejects requests without an
+  # X-Requested-With header (400), and ALB health checks can't send one, so the
+  # target was marked unhealthy and ECS replaced the task every few minutes.
+  # The landing page needs no header. The container health check (ecs.tf)
+  # still probes the API with the header.
   health_check {
     protocol = "HTTPS"
-    path     = "/api/server/status"
-    matcher  = "200"
+    path     = "/"
+    matcher  = "200-399"
     interval = 30
   }
   tags = local.tags
