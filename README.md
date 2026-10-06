@@ -40,7 +40,7 @@ tag), and `bash`, `curl` and `xmllint` wherever you run the scripts.
 | `scripts/oie-api.sh` | thin curl wrapper, sourced by the others |
 | `scripts/gen-dev-certs.sh` | throwaway certs for testing the mTLS overlay |
 | `scripts/oie-cluster-keystore.sh` | extract the keystore every node in a cluster shares |
-| `docker/Dockerfile` (`OIE_BUILTIN_PLUGIN_URLS`) | this stack's 12 first-party plugins, each its own GitHub repo, fetched and baked into the image at build time |
+| `docker/Dockerfile` (`OIE_BUILTIN_PLUGIN_URLS`) | this stack's 13 first-party plugins, each its own GitHub repo, fetched and baked into the image at build time |
 | `extensions/` | drop licensed extension zips here (e.g. Zen) |
 | `docs/web-ui.md` | enabling the browser-based web administrator |
 | `docs/mtls.md` | setting up mutual TLS, three ways |
@@ -311,7 +311,7 @@ first-party plugins pinned in `OIE_BUILTIN_PLUGIN_URLS` have to be re-pinned to
 builds that declare the new version because compatibility is an exact string
 match, and the `oie-check-extensions.sh` that tells you it worked. It watches
 the engine and the Web Support extension by default, and
-`OIE_UPDATE_CHECK_EXTENSIONS` adds the rest — the 12 first-party plugins and the
+`OIE_UPDATE_CHECK_EXTENSIONS` adds the rest — the 13 first-party plugins and the
 community set — out of the box.
 
 **It installs nothing.** There is no button on that page that touches the
@@ -554,7 +554,7 @@ independent of the build/validate/deploy pipeline below. Six tiers:
 - **js-unit** — `node --test` over any plugin- or overlay-side
   `webadmin/web/plugin.js` pure logic (XStream decode/encode, TSV parsing,
   formatting, validation) still tracked in this repo (the TLS Manager overlay,
-  for example), via a mirror module beside each test. The 12 first-party
+  for example), via a mirror module beside each test. The 13 first-party
   plugins' own unit tests now live and run in their own repos.
 - **java-unit** — compiles and runs any dependency-free Java test still under
   `plugins/` or `extensions/` in this repo; skips cleanly now that the 12

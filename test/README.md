@@ -6,7 +6,7 @@ channel config and the whole stack end to end. The vendor engine (OIE 4.6.0)
 has no source here; it is exercised through its behaviour in the integration
 tier.
 
-**The 12 first-party plugins formerly built from `plugins/` in this repo now
+**The 13 first-party plugins formerly built from `plugins/` in this repo now
 live in their own GitHub repos** (`gibson9583/oie-<name>`), each with its own
 test suite. They are fetched and baked into the engine image at build time via
 `OIE_BUILTIN_PLUGIN_URLS` (see `docker/Dockerfile`) rather than built here, so
@@ -23,7 +23,7 @@ minute; `integration` builds the engine image and runs last.
 | **shell-unit** | `bats test/shell/*.bats` | Pure shell logic in `docker/entrypoint.sh` (`set_prop`, `_MP_*` mangling, `server.id` derivation, extension-URL checksum parsing) and `scripts/oie-config-push.sh` (`${VAR}` expansion, XML escaping) |
 | **shellcheck** | `shellcheck -x` over `scripts/`, `docker/`, any `plugins/*/build.sh` still tracked here | Static analysis of every script |
 | **lint-static** | `xmllint`, `yamllint`, `docker compose config` | Channel XML well-formedness, missing/duplicate channel ids, YAML validity, compose parses |
-| **integration** | Build engine image (fetches and bakes in the 12 first-party plugins via `OIE_BUILTIN_PLUGIN_URLS`), stand up Postgres + engine, push fixture + real config | The whole stack: a channel the engine cannot deserialise is stored as an `InvalidChannel` while the API still reports success — this tier reads each channel back and asserts it did not become a stub and reached a deployed state |
+| **integration** | Build engine image (fetches and bakes in the 13 first-party plugins via `OIE_BUILTIN_PLUGIN_URLS`), stand up Postgres + engine, push fixture + real config | The whole stack: a channel the engine cannot deserialise is stored as an `InvalidChannel` while the API still reports success — this tier reads each channel back and asserts it did not become a stub and reached a deployed state |
 
 ## Running locally
 
@@ -35,7 +35,7 @@ Everything except `integration` needs only Node 20, a JDK 17+, `bats` and
 for d in plugins/*/test extensions/*/test; do [ -d "$d" ] && (cd "$d" && node --test); done
 
 # Java unit — compile a tracked plugin's src with its test, then run it (none
-# tracked here by default; the 12 first-party plugins test this in their own
+# tracked here by default; the 13 first-party plugins test this in their own
 # repos now)
 # javac -d /tmp/vt <plugin>/src/.../Foo.java <plugin>/test/java/FooTest.java
 # java -cp /tmp/vt FooTest

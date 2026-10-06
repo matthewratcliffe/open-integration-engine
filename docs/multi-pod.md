@@ -14,7 +14,7 @@ the schema working as designed.
 What is missing is the control plane — the part that tells the other engines a
 deployment happened. That is what
 [`oie-cluster`](https://github.com/gibson9583/oie-cluster) adds, and what this
-document explains. It is one of this stack's 12 first-party plugins, baked into
+document explains. It is one of this stack's 13 first-party plugins, baked into
 the engine image at build time via `OIE_BUILTIN_PLUGIN_URLS` (see
 `docker/Dockerfile`) rather than built from source in this repo.
 
