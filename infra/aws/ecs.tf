@@ -31,17 +31,22 @@ resource "aws_ecs_task_definition" "oie" {
       [for port in local.channel_port_numbers : { containerPort = port, protocol = "tcp" }]
     )
 
-    environment = [
-      { name = "DATABASE", value = "postgres" },
-      { name = "DATABASE_URL", value = "jdbc:postgresql://${var.rds_endpoint}/${var.rds_database_name}" },
-      { name = "OIE_HEAP_MAX", value = "2g" },
-      { name = "OIE_CLUSTER_ENABLED", value = "false" },
-      { name = "SERVER_STARTUP_DEPLOY", value = "true" },
-      { name = "KEYSTORE_RESET", value = var.keystore_reset },
-      # Downloaded from GitHub through the VPC's NAT gateway, and cached on EFS
-      # (appdata/extension-cache) so a restart survives a failed download.
-      { name = "OIE_EXTENSION_URLS", value = join(",", var.extension_urls) },
-    ]
+    environment = concat(
+      [
+        { name = "DATABASE", value = "postgres" },
+        { name = "DATABASE_URL", value = "jdbc:postgresql://${var.rds_endpoint}/${var.rds_database_name}" },
+        { name = "OIE_HEAP_MAX", value = "2g" },
+        { name = "OIE_CLUSTER_ENABLED", value = "false" },
+        { name = "SERVER_STARTUP_DEPLOY", value = "true" },
+        { name = "KEYSTORE_RESET", value = var.keystore_reset },
+        # Downloaded from GitHub through the VPC's NAT gateway, and cached on EFS
+        # (appdata/extension-cache) so a restart survives a failed download.
+        { name = "OIE_EXTENSION_URLS", value = join(",", var.extension_urls) },
+      ],
+      # Only the settings CI pinned: an OIE_OIDC_* variable that is present at
+      # all, even empty, overrides the console's stored policy.
+      [for name, value in var.oidc_settings : { name = name, value = value }]
+    )
 
     # The entrypoint reads the keystore password from KEYSTORE_STOREPASS and
     # KEYSTORE_KEYPASS (keystore.storepass/keypass), not KEYSTORE_PASSWORD -
@@ -54,7 +59,11 @@ resource "aws_ecs_task_definition" "oie" {
       [for name in ["KEYSTORE_STOREPASS", "KEYSTORE_KEYPASS"] : {
         name      = name
         valueFrom = "${var.app_secret_arn}:KEYSTORE_PASSWORD::"
-      }]
+      }],
+      var.oidc_client_secret_set ? [{
+        name      = "OIE_OIDC_CLIENT_SECRET"
+        valueFrom = "${var.app_secret_arn}:OIE_OIDC_CLIENT_SECRET::"
+      }] : []
     )
     mountPoints = [{
       sourceVolume  = "appdata"

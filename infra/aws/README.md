@@ -105,6 +105,26 @@ Required GitLab variables:
   back, so only do this where that is acceptable.
 - Optional environment-scoped `CHANNEL_PORT_COUNT` and `CHANNEL_PORT_SOURCES`:
   how many channel ports to open, and per-port source restrictions (see above).
+- Optional environment-scoped single sign-on (`docs/sso.md`). Leave
+  `OIDC_ENABLED` unset and SSO is configured in the console. Set it to `true`
+  (or `false`, to pin SSO off) and the deployment pins the policy instead:
+  - `OIDC_DISCOVERY_URL`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` (masked)
+    are required with `OIDC_ENABLED=true`. The secret goes into the Secrets
+    Manager secret, not the task's plain environment.
+  - `OIDC_PROVIDER_LABEL`, `OIDC_USERNAME_CLAIM` and `OIDC_SCOPES` are
+    optional, and pinned only when set.
+  - The web administrator URL is derived as `https://<hostname>/oie-webadmin`;
+    register `https://<hostname>/oie-webadmin/oidc/callback` as the redirect
+    URI at the provider (the plan job prints it).
+  - `OIDC_AUTO_REDIRECT=true` sends browsers straight to the provider instead
+    of showing the password form. It **hides** local sign-in, it does not
+    disable it: the REST API and the admin account still accept a password,
+    which is the break-glass path when the provider is down.
+
+  A pinned field is read-only in the console. Role mappings, linked accounts
+  and JIT provisioning are not pinned, and stay in the console. Any `OIDC_*`
+  variable set without `OIDC_ENABLED` fails the plan rather than being
+  ignored.
 
 Local Kubernetes additionally needs `KUBE_CONFIG_B64`, `DATABASE_URL`,
 `RDS_MASTER_USERNAME`, and `RDS_MASTER_PASSWORD`. It deploys one utility engine;

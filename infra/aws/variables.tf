@@ -119,3 +119,20 @@ variable "extension_urls" {
     "sha256:a18d208ca4e6ca0700790d971fde5b4212df70b3dc5b34ae3cc9032afdb3a5c2@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.1/oidcauth-1.0.1.zip",
   ]
 }
+
+variable "oidc_settings" {
+  description = "Single sign-on settings pinned from GitLab (OIDC_* CI variables, see docs/sso.md), as OIE_OIDC_* environment variable name => value. Each one overrides the console's stored policy and shows read-only there. Empty (the default) passes none and leaves SSO to the console. The client secret is not here - see oidc_client_secret_set."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition     = alltrue([for name in keys(var.oidc_settings) : can(regex("^OIE_OIDC_[A-Z0-9_]+$", name)) && name != "OIE_OIDC_CLIENT_SECRET"])
+    error_message = "oidc_settings keys must be OIE_OIDC_* variable names, and the client secret goes through the app secret (oidc_client_secret_set), not here."
+  }
+}
+
+variable "oidc_client_secret_set" {
+  description = "Whether the app secret carries OIE_OIDC_CLIENT_SECRET (CI adds it when OIDC_CLIENT_SECRET is set). Only then is it mapped into the task - mapping a key the secret lacks stops the task from starting."
+  type        = bool
+  default     = false
+}

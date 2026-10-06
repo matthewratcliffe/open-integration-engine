@@ -219,9 +219,14 @@ saving the form leaves it untouched. So the two ways of configuring this do not 
 pick one. If you pin from the environment, pin the whole policy, and expect the settings
 page to be a viewer.
 
-This repository configures from the console, which is why `compose.sso-killswitch.yaml`
-passes only the kill switch and no longer passes settings. If you need the other
-direction — a deployment that configures machines rather than consoles, with the policy in
+Locally, this repository configures from the console, which is why `compose.sso-killswitch.yaml`
+passes only the kill switch and no longer passes settings. The AWS deployment can do
+either: with `OIDC_ENABLED` unset in GitLab it configures from the console, and with it
+set the plan pins the provider settings (discovery URL, client id and secret, the web
+administrator URL, and optionally the label, username claim, scopes and auto-redirect)
+from environment-scoped CI variables — see `infra/aws/README.md`. Roles, linked
+accounts and JIT stay in the console either way. For any other deployment that needs
+the other direction — a deployment that configures machines rather than consoles, with the policy in
 your secret store and the console read-only — pass the variables in an overlay of your own,
 declared in list form so that an unset variable stays *absent* from the container rather
 than arriving present-and-empty.
