@@ -76,6 +76,13 @@ locals {
     admin   = { from = 8443, to = 8443 }
     channel = { from = local.channel_port_range.min, to = local.channel_port_range.max }
   }
+  # The trusted security group's rules, minus any port it already reaches as
+  # the load balancer's own security group (network.tf's admin and channel
+  # rules): EC2 rejects a second identical rule as a duplicate.
+  task_trusted_security_group_ports = {
+    for name, ports in local.task_exposed_ports : name => ports
+    if var.trusted_security_group_id != (name == "admin" ? local.shared.alb_security_group_id : var.nlb_security_group_id)
+  }
   task_trusted_cidr_rules = merge([
     for name, ports in local.task_exposed_ports : {
       for cidr in local.trusted_cidrs : "${name} ${cidr}" => merge(ports, { cidr = cidr })

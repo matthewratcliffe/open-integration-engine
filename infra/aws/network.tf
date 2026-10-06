@@ -56,7 +56,7 @@ resource "aws_vpc_security_group_ingress_rule" "trusted_cidr" {
   description       = "Trusted range, direct"
 }
 resource "aws_vpc_security_group_ingress_rule" "trusted_security_group" {
-  for_each                     = local.task_exposed_ports
+  for_each                     = local.task_trusted_security_group_ports
   security_group_id            = aws_security_group.task.id
   referenced_security_group_id = var.trusted_security_group_id
   from_port                    = each.value.from
