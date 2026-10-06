@@ -204,7 +204,7 @@ all. Install the zip and restart.
 `serverClasses`, no jar, no `apiProvider`, just a `plugin.xml` carrying a `webadmin/`
 folder. The engine registers it like any other extension and loads nothing into its JVM,
 which makes it the cheapest way to add a console-only surface. See
-[`gibson9583/oie-sso-user-guard`](https://github.com/gibson9583/oie-sso-user-guard).
+[`matthewratcliffe/oie-sso-user-guard`](https://github.com/matthewratcliffe/oie-sso-user-guard).
 
 ### Two surfaces the console has no hook for
 

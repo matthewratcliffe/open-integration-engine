@@ -13,7 +13,7 @@ the schema working as designed.
 
 What is missing is the control plane — the part that tells the other engines a
 deployment happened. That is what
-[`oie-cluster`](https://github.com/gibson9583/oie-cluster) adds, and what this
+[`oie-cluster`](https://github.com/matthewratcliffe/oie-cluster) adds, and what this
 document explains. It is one of this stack's 13 first-party plugins, baked into
 the engine image at build time via `OIE_BUILTIN_PLUGIN_URLS` (see
 `docker/Dockerfile`) rather than built from source in this repo.
@@ -40,8 +40,8 @@ scripts/oie-cluster-keystore.sh   the shared keystore, which comes first
 
 ## What already works across instances
 
-Verified against the 4.6.0 jars from the [`oie-cluster`](https://github.com/gibson9583/oie-cluster)
-and [`oie-node-monitor`](https://github.com/gibson9583/oie-node-monitor) repos
+Verified against the 4.6.0 jars from the [`oie-cluster`](https://github.com/matthewratcliffe/oie-cluster)
+and [`oie-node-monitor`](https://github.com/matthewratcliffe/oie-node-monitor) repos
 and the image that bakes them in, not assumed:
 
 | | |
@@ -287,7 +287,7 @@ and the console reaches those per node instead.
 **A console plugin** in `webadmin/`, the same shape as the existing ones — a
 `plugin.json` and a plain ES module calling `platform.registerNavItem`,
 `registerView` and `registerIcon`, exactly as
-[`oie-volume-monitor`](https://github.com/gibson9583/oie-volume-monitor) and the
+[`oie-volume-monitor`](https://github.com/matthewratcliffe/oie-volume-monitor) and the
 `tls-manager` overlay do. It adds:
 
 - a **Cluster** view: one row per node (name, role, server id, version, uptime,
@@ -313,7 +313,7 @@ login and no service account to manage, because there are no node-to-node calls 
 the main path.
 
 **Node health is a second view, in a second extension.**
-[`oie-node-monitor`](https://github.com/gibson9583/oie-node-monitor) adds **Nodes**: per
+[`oie-node-monitor`](https://github.com/matthewratcliffe/oie-node-monitor) adds **Nodes**: per
 engine, online or offline, uptime, CPU, heap, each disk it writes to, threads,
 what its channels are doing, and message volume with rates and an hour of
 history. It works the same way and for the same reason — each node samples
@@ -463,8 +463,8 @@ in this repo — baked into the engine image at build time via
 
 | | |
 | --- | --- |
-| [`gibson9583/oie-cluster`](https://github.com/gibson9583/oie-cluster) | the extension: the intent hook, the convergence agent, `/api/cluster/*`, and the Cluster view in the web console |
-| [`gibson9583/oie-node-monitor`](https://github.com/gibson9583/oie-node-monitor) | the Nodes view: each engine's health, resource use and throughput, sampled into the shared database |
+| [`matthewratcliffe/oie-cluster`](https://github.com/matthewratcliffe/oie-cluster) | the extension: the intent hook, the convergence agent, `/api/cluster/*`, and the Cluster view in the web console |
+| [`matthewratcliffe/oie-node-monitor`](https://github.com/matthewratcliffe/oie-node-monitor) | the Nodes view: each engine's health, resource use and throughput, sampled into the shared database |
 | `docker/entrypoint.sh` | `KEYSTORE_SOURCE`, `OIE_DISABLE_EXTENSIONS`, a derived `server.id`, `JETTY_WORKER_INSTANCE` |
 | `scripts/oie-cluster-keystore.sh` | the shared keystore, taken off a started engine |
 | `compose.cluster.yaml` + `proxy/cluster-lb.conf` | three engines and a round-robin front door, locally |

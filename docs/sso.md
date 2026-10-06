@@ -176,7 +176,7 @@ someone spends an afternoon on it:
   provider, not here.
 - **The Edit User dialog lies about it by default.** The console lets an administrator
   type into those fields and save them, with no hint that they are about to be reverted.
-  [`oie-sso-user-guard`](https://github.com/gibson9583/oie-sso-user-guard) is this
+  [`oie-sso-user-guard`](https://github.com/matthewratcliffe/oie-sso-user-guard) is this
   stack's answer: a console-only extension that makes the dialog read-only for
   provider-managed accounts and says why. It recognises them by the
   `oidc.subject` user preference the extension binds them with, so it needs no

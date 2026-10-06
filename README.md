@@ -295,7 +295,7 @@ pristine copy on the next boot, so it would silently disappear.
 
 ### Knowing when there is an update
 
-[`oie-update-check`](https://github.com/gibson9583/oie-update-check) (baked
+[`oie-update-check`](https://github.com/matthewratcliffe/oie-update-check) (baked
 into the image at build time, see `OIE_BUILTIN_PLUGIN_URLS` in
 `docker/Dockerfile`) puts a chip next to the version in the console header when
 a release you do not have has been published:
@@ -321,7 +321,7 @@ rather than per node, carrying nothing about this engine. `OIE_UPDATE_CHECK=fals
 stops it reaching the network at all and beats the setting stored in the
 database, so an egress-restricted deployment can refuse it from the deployment
 rather than from the data; `OIE_UPDATE_CHECK_API_BASE` points it at a mirror
-instead. See [`gibson9583/oie-update-check`](https://github.com/gibson9583/oie-update-check).
+instead. See [`matthewratcliffe/oie-update-check`](https://github.com/matthewratcliffe/oie-update-check).
 
 ## Installing the Zen SSL extension
 
@@ -406,7 +406,7 @@ that need a keystore or client certificate chosen per partner.
 
 ## SFTP, both directions
 
-[`oie-sftp-connector`](https://github.com/gibson9583/oie-sftp-connector) adds
+[`oie-sftp-connector`](https://github.com/matthewratcliffe/oie-sftp-connector) adds
 two connectors the engine does not otherwise have, and like the other 12
 first-party plugins is baked into the image at build time (`OIE_BUILTIN_PLUGIN_URLS`
 in `docker/Dockerfile`) rather than built from source in this repo:
@@ -421,14 +421,14 @@ reason to reach for these is what they cannot do: run a server, and verify the
 far end's host key against a `known_hosts` file or a pinned key rather than
 trusting whatever answers. Both administrators have panels for them.
 
-See [`gibson9583/oie-sftp-connector`](https://github.com/gibson9583/oie-sftp-connector),
+See [`matthewratcliffe/oie-sftp-connector`](https://github.com/matthewratcliffe/oie-sftp-connector),
 which also covers why a connector extension has to register its own classes with
 the channel serializer — without that, a channel using it saves with a `200` and
 is stored as an invalid channel.
 
 ## Synthetic HL7 traffic
 
-[`oie-random-generator`](https://github.com/gibson9583/oie-random-generator)
+[`oie-random-generator`](https://github.com/matthewratcliffe/oie-random-generator)
 adds a **Random Generator** source connector:
 HL7 v2 messages manufactured on the polling schedule, for when the channel is
 ready and the upstream system is not.
@@ -452,7 +452,7 @@ patient. Every cell in it is optional: what you leave blank is filled from the
 invented patient at that position, so a row naming only an MRN still carries a
 stable address, next of kin and insurer.
 
-See [`gibson9583/oie-random-generator`](https://github.com/gibson9583/oie-random-generator)
+See [`matthewratcliffe/oie-random-generator`](https://github.com/matthewratcliffe/oie-random-generator)
 for the placeholder reference and the sample per message type.
 
 ## Running more than one engine
@@ -470,7 +470,7 @@ message, connector message and statistics row carries a `SERVER_ID`, and every
 queue, recovery and statistics query filters on it, so two engines in the same
 channel's tables is the schema working as designed. What is missing is the part
 that tells the other engines a deployment happened, and that is
-[`oie-cluster`](https://github.com/gibson9583/oie-cluster) (baked into the
+[`oie-cluster`](https://github.com/matthewratcliffe/oie-cluster) (baked into the
 image at build time, see `docker/Dockerfile`): a deploy on any node — console,
 Swing Administrator, REST API, CI — becomes intent in the database, and every
 node converges on it within a few seconds.
@@ -495,7 +495,7 @@ the monitors — off the workers, through `OIE_DISABLE_EXTENSIONS`.
 
 The web console grows two views. **Cluster** shows what each node has deployed,
 message counts summed across them, and the queues left behind by a node that is
-gone. **Nodes** ([`oie-node-monitor`](https://github.com/gibson9583/oie-node-monitor)) shows
+gone. **Nodes** ([`oie-node-monitor`](https://github.com/matthewratcliffe/oie-node-monitor)) shows
 the health of each engine — online or offline, uptime, CPU, heap, disk per
 volume, threads, channel states and message volume with rates and an hour of
 history. Each node samples itself into the shared database, so any node's console
