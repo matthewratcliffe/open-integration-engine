@@ -26,6 +26,12 @@ resource "aws_lb_listener_rule" "admin" {
   condition {
     host_header { values = [var.admin_host_header] }
   }
+  # Only the trusted ranges reach the console. The shared ALB's own security
+  # group stays open for the other apps behind it; anyone else falls through
+  # to the listener's later rules and default action.
+  condition {
+    source_ip { values = local.trusted_cidrs }
+  }
   action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.admin.arn
@@ -45,6 +51,9 @@ resource "aws_lb_listener_rule" "admin_root_redirect" {
   }
   condition {
     path_pattern { values = ["/"] }
+  }
+  condition {
+    source_ip { values = local.trusted_cidrs }
   }
   action {
     type = "redirect"
@@ -79,11 +88,9 @@ resource "aws_lb_target_group" "channel" {
   }
 }
 
-# Each channel port gets its own listener on the shared NLB. Terraform owns
-# these directly rather than requiring a manual post-apply step, since the
-# ECS service (below) needs each target group to already have an associated
-# load balancer at creation time -- a manual step can't satisfy that on a
-# brand-new service.
+# Each open channel port gets its own listener on the shared NLB - a listener
+# serves exactly one port. The running task is registered in the target groups
+# by channel_targets.tf, not by the ECS service.
 resource "aws_lb_listener" "channel" {
   for_each          = local.channel_ports
   load_balancer_arn = var.nlb_arn

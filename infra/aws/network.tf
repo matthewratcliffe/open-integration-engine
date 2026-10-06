@@ -26,17 +26,43 @@ resource "aws_vpc_security_group_ingress_rule" "channel" {
   to_port                      = local.channel_port_range.max
   ip_protocol                  = "tcp"
 }
-resource "aws_vpc_security_group_ingress_rule" "nlb_channel_range" {
+resource "aws_vpc_security_group_ingress_rule" "nlb_channel" {
   # Owned directly by this project rather than centralized in
-  # awsshardmoduleprod - each app on the shared NLB manages its own
-  # reserved port range as a standalone rule, so no two apps' Terraform
-  # configs fight over the same security group.
+  # awsshardmoduleprod - each app on the shared NLB manages its own rules as
+  # standalone resources, so no two apps' Terraform configs fight over the
+  # same security group. The client's source is filtered here, at the NLB:
+  # the task only ever sees the NLB's addresses (preserve_client_ip = false).
+  # One rule per source of each run of consecutive open ports sharing sources
+  # (locals.tf).
+  for_each          = local.channel_ingress_rules
   security_group_id = var.nlb_security_group_id
-  cidr_ipv4         = "0.0.0.0/0"
-  from_port         = local.channel_port_range.min
-  to_port           = local.channel_port_range.max
+  cidr_ipv4         = each.value.cidr
+  from_port         = each.value.from
+  to_port           = each.value.to
   ip_protocol       = "tcp"
   description       = "OIE (${local.deployment}) channel traffic"
+}
+# Direct to the task, bypassing the load balancers: the trusted ranges and
+# security group reach every port it exposes (8443 and the reserved channel
+# range). 80/443 are only on the shared ALB, where the trusted ranges are
+# enforced by the listener rules' source_ip condition (load_balancing.tf).
+resource "aws_vpc_security_group_ingress_rule" "trusted_cidr" {
+  for_each          = local.task_trusted_cidr_rules
+  security_group_id = aws_security_group.task.id
+  cidr_ipv4         = each.value.cidr
+  from_port         = each.value.from
+  to_port           = each.value.to
+  ip_protocol       = "tcp"
+  description       = "Trusted range, direct"
+}
+resource "aws_vpc_security_group_ingress_rule" "trusted_security_group" {
+  for_each                     = local.task_exposed_ports
+  security_group_id            = aws_security_group.task.id
+  referenced_security_group_id = var.trusted_security_group_id
+  from_port                    = each.value.from
+  to_port                      = each.value.to
+  ip_protocol                  = "tcp"
+  description                  = "Trusted security group, direct"
 }
 resource "aws_vpc_security_group_ingress_rule" "database" {
   security_group_id            = var.rds_security_group_id

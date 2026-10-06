@@ -30,10 +30,63 @@ variable "rds_endpoint" { type = string }
 variable "rds_database_name" { type = string }
 variable "rds_security_group_id" { type = string }
 
-variable "channel_ports" {
-  description = "Ports for channels to expose via the NLB. Empty by default - no channels are deployed until you add some. Each port must fall within this deployment's reserved NLB port range (staging/oie 50000-50100, production/oie1 50500-50600 - see locals.channel_port_ranges)."
-  type        = set(number)
+variable "channel_port_count" {
+  description = "How many channel ports to open on the shared NLB: the first N of this deployment's reserved range (locals.channel_port_ranges), each with its own listener and target group. Raise it to expand; the rest of the range stays reserved but closed."
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.channel_port_count >= 0 && floor(var.channel_port_count) == var.channel_port_count
+    error_message = "channel_port_count must be a whole number, 0 or more."
+  }
+  validation {
+    condition     = var.channel_port_count <= local.channel_port_range.max - local.channel_port_range.min + 1
+    error_message = "channel_port_count is larger than this deployment's reserved NLB port range (locals.channel_port_ranges)."
+  }
+}
+
+variable "channel_port_sources" {
+  description = "Restricts an open channel port to one source, as port => IPv4 address or CIDR (e.g. { \"50003\" = \"203.0.113.7\" }). A bare address means that host (/32). A restricted port also allows trusted_cidrs; ports not listed are public (0.0.0.0/0)."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition = alltrue([
+      for cidr in values(var.channel_port_sources) :
+      can(cidrnetmask(strcontains(cidr, "/") ? cidr : "${cidr}/32")) && cidrsubnet(strcontains(cidr, "/") ? cidr : "${cidr}/32", 0, 0) == (strcontains(cidr, "/") ? cidr : "${cidr}/32")
+    ])
+    error_message = "Each channel port source must be an IPv4 address or a CIDR with no host bits set (10.1.0.0/16, not 10.1.2.3/16)."
+  }
+  validation {
+    condition     = alltrue([for port in keys(var.channel_port_sources) : contains(local.channel_ports, port)])
+    error_message = "channel_port_sources names a port that isn't open - only the first channel_port_count ports of this deployment's range are."
+  }
+}
+
+variable "trusted_cidrs" {
+  description = "Trusted IPv4 addresses or CIDRs (a bare address means that host). Only they reach the admin console through the shared ALB (443), and they reach every port the task exposes: 8443 and the reserved channel range directly, and the open channel ports through the NLB."
+  type        = list(string)
   default     = []
+
+  validation {
+    condition = alltrue([
+      for cidr in var.trusted_cidrs :
+      can(cidrnetmask(strcontains(cidr, "/") ? cidr : "${cidr}/32")) && cidrsubnet(strcontains(cidr, "/") ? cidr : "${cidr}/32", 0, 0) == (strcontains(cidr, "/") ? cidr : "${cidr}/32")
+    ])
+    error_message = "Each trusted CIDR must be an IPv4 address or a CIDR with no host bits set (10.1.0.0/16, not 10.1.2.3/16)."
+  }
+  # An ALB rule takes at most 5 condition values in total, and the / redirect
+  # rule already uses two (host and path) - so at most 3 source CIDRs.
+  validation {
+    condition     = length(var.trusted_cidrs) >= 1 && length(var.trusted_cidrs) <= 3
+    error_message = "trusted_cidrs (CI: TRUSTED_CIDRS) needs 1 to 3 entries - the admin console would otherwise be open to everyone, and an ALB rule can't match more than 3 source CIDRs alongside its host and path."
+  }
+}
+
+variable "trusted_security_group_id" {
+  description = "Security group whose members reach every port the task exposes (8443 and the reserved channel range) directly. 80/443 are on the ALB, not the task, so this grants nothing there."
+  type        = string
+  default     = "sg-060fae9516e3f4737"
 }
 
 variable "nlb_security_group_id" { type = string }

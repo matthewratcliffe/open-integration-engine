@@ -28,7 +28,7 @@ resource "aws_ecs_task_definition" "oie" {
 
     portMappings = concat(
       [{ containerPort = 8443, protocol = "tcp" }],
-      [for port in var.channel_ports : { containerPort = port, protocol = "tcp" }]
+      [for port in local.channel_port_numbers : { containerPort = port, protocol = "tcp" }]
     )
 
     environment = [
@@ -106,15 +106,9 @@ resource "aws_ecs_service" "oie" {
     container_port   = 8443
   }
 
-  dynamic "load_balancer" {
-    for_each = local.channel_ports
-    content {
-      target_group_arn = aws_lb_target_group.channel[load_balancer.value].arn
-      container_name   = "oie"
-      container_port   = tonumber(load_balancer.value)
-    }
-  }
-
-  depends_on = [aws_lb_listener_rule.admin, aws_lb_listener.channel, aws_efs_mount_target.appdata, terraform_data.database]
+  # The channel target groups aren't attached here: a service takes at most 5
+  # target groups. channel_targets.tf registers the task in them instead, and
+  # its state-change rule must exist before the first task starts.
+  depends_on = [aws_lb_listener_rule.admin, aws_cloudwatch_event_target.channel_targets_task_state, aws_efs_mount_target.appdata, terraform_data.database]
   tags       = local.tags
 }

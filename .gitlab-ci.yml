@@ -188,7 +188,35 @@ push-ecr:
     - export TF_VAR_efs_mount_target_subnet_ids="${EFS_MOUNT_TARGET_SUBNET_IDS:-[]}"
     - export TF_VAR_keystore_reset="${KEYSTORE_RESET:-}"
     - 'if [ -n "${OIE_EXTENSION_URLS:-}" ]; then export TF_VAR_extension_urls="$(jq -cRn --arg s "$OIE_EXTENSION_URLS" ''$s | split(",")'')"; fi'
+    # Optional, environment-scoped: CHANNEL_PORT_COUNT opens the first N ports
+    # of the deployment's reserved range (default 20); CHANNEL_PORT_SOURCES
+    # restricts ports to a source, as port=address-or-CIDR pairs, e.g.
+    # "50003=203.0.113.7,50004=10.1.0.0/16" (on top of TRUSTED_CIDRS).
+    - 'if [ -n "${CHANNEL_PORT_COUNT:-}" ]; then export TF_VAR_channel_port_count="$CHANNEL_PORT_COUNT"; fi'
+    - 'if [ -n "${CHANNEL_PORT_SOURCES:-}" ]; then TF_VAR_channel_port_sources="$(jq -cRn --arg s "$CHANNEL_PORT_SOURCES" ''$s | gsub("[[:space:]]"; "") | split(",") | map(select(. != "") | split("=") | if length == 2 then {(.[0]): .[1]} else error("CHANNEL_PORT_SOURCES entries must be port=source, not \(join("="))") end) | add // {}'')"; export TF_VAR_channel_port_sources; fi'
+    # TRUSTED_CIDRS: 1-3 comma-separated addresses or CIDRs - the only sources
+    # that reach the console through the ALB, and that reach every port the
+    # task exposes. Terraform's validation fails the plan when it is unset.
+    - 'if [ -n "${TRUSTED_CIDRS:-}" ]; then TF_VAR_trusted_cidrs="$(jq -cRn --arg s "$TRUSTED_CIDRS" ''$s | gsub("[[:space:]]"; "") | split(",") | map(select(. != ""))'')"; export TF_VAR_trusted_cidrs; fi'
     - terraform -chdir="$TF_ROOT" init -backend-config="environments/$DEPLOY_ENV-$DEPLOY_INSTANCE.backend.hcl"
+    # The NLB is shared too, and this deployment's whole reserved port range is
+    # its own: fail if another app has a listener anywhere in it (CreateListener
+    # would also fail mid-apply on a taken port). A listener is ours when it
+    # forwards to this deployment's target group for that port.
+    - |
+      # Each step on its own line: a failure inside a pipe would go unnoticed and
+      # leave nothing to check against.
+      echo 'jsonencode(local.channel_port_range)' | terraform -chdir="$TF_ROOT" console > /tmp/channel-range.txt
+      range="$(jq -r 'fromjson | "\(.min) \(.max)"' /tmp/channel-range.txt)"
+      aws elbv2 describe-listeners --load-balancer-arn "$TF_VAR_nlb_arn" --output json > /tmp/nlb-listeners.json
+      jq -r '.Listeners[] | "\(.Port) \(.DefaultActions[0].TargetGroupArn // "" | sub(".*:targetgroup/"; "") | sub("/.*"; ""))"' /tmp/nlb-listeners.json         | sort -n > /tmp/nlb-listeners.txt
+      echo "Shared NLB listeners (port target-group):"; cat /tmp/nlb-listeners.txt
+      clash="$(awk -v min="${range% *}" -v max="${range#* }" -v name="au-$DEPLOY_ENV-$DEPLOY_INSTANCE" '$1 >= min && $1 <= max && $2 != name "-" $1' /tmp/nlb-listeners.txt)"
+      if [ -n "$clash" ]; then
+        echo "Another app has NLB listeners in this deployment's reserved port range ($range):" >&2
+        echo "$clash" >&2
+        exit 1
+      fi
     - terraform -chdir="$TF_ROOT" plan -out="$CI_PROJECT_DIR/$DEPLOY_ENV-$DEPLOY_INSTANCE.tfplan"
   artifacts:
     paths: ["$DEPLOY_ENV-$DEPLOY_INSTANCE.tfplan", "infra/aws/.terraform", "infra/aws/.terraform.lock.hcl", "infra/aws/shared-outputs.json"]
@@ -239,8 +267,8 @@ deploy-local-k8s:
 # Production instances. Each is its own engine at <instance>.htrak.com with its
 # own GitLab environment, production/<instance>, which scopes its variables:
 # RDS_DATABASE_NAME, AWS_ALB_PRIORITY, AWS_ALB_REDIRECT_PRIORITY,
-# KEYSTORE_PASSWORD, OIE_KEYSTORE_B64 (and optionally KEYSTORE_RESET,
-# OIE_EXTENSION_URLS). To add oie2: copy the two oie1 jobs below, add
+# KEYSTORE_PASSWORD, OIE_KEYSTORE_B64, TRUSTED_CIDRS (and optionally KEYSTORE_RESET,
+# OIE_EXTENSION_URLS, CHANNEL_PORT_COUNT, CHANNEL_PORT_SOURCES). To add oie2: copy the two oie1 jobs below, add
 # infra/aws/environments/production-oie2.backend.hcl and an NLB port range in
 # infra/aws/locals.tf, and set those variables for production/oie2.
 .plan-aws-production:

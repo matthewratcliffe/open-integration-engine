@@ -16,21 +16,71 @@ locals {
     "KEYSTORE_PASSWORD",
     "KEYSTORE_BASE64",
   ]
-  # for_each only accepts maps or sets of strings, not the set(number) that
-  # var.channel_ports is declared as - stringify it once for reuse.
-  channel_ports = toset([for port in var.channel_ports : tostring(port)])
-
-  # Each deployment (environment/instance) gets its own reserved block of NLB
-  # ports for channel traffic, so no two engines' channels can collide on the
-  # shared NLB. A new instance needs its own entry here. This only reserves the range (the security-group ingress
-  # rule opens it in full) - no channels are deployed by default, and
-  # individual channel ports (var.channel_ports) are only allowed, and only
-  # get their own NLB listener/target group, once actually added.
+  # Each deployment (environment/instance) reserves its own block of 100 NLB
+  # ports for channel traffic, so no two engines' channels collide on the
+  # shared NLB; the plan job fails if another app has a listener in the block.
+  # A new instance needs its own entry here. Only the first
+  # var.channel_port_count ports are open - an NLB listener serves one port,
+  # so each open port has its own listener and target group.
   channel_port_ranges = {
-    "staging/oie"     = { min = 50000, max = 50100 }
-    "production/oie1" = { min = 50500, max = 50600 }
+    "staging/oie"     = { min = 50000, max = 50099 }
+    "production/oie1" = { min = 50500, max = 50599 }
   }
   channel_port_range = local.channel_port_ranges[local.deployment]
+
+  # for_each only accepts maps or sets of strings - stringify once for reuse.
+  channel_port_numbers = range(local.channel_port_range.min, local.channel_port_range.min + var.channel_port_count)
+  channel_ports        = toset([for port in local.channel_port_numbers : tostring(port)])
+
+  # A bare address means that host.
+  trusted_cidrs = [for cidr in var.trusted_cidrs : strcontains(cidr, "/") ? cidr : "${cidr}/32"]
+
+  # Allowed sources per open port: public (0.0.0.0/0) unless
+  # var.channel_port_sources restricts it, and then that source plus the
+  # trusted ranges, which reach every port. Joined into a string so
+  # neighbouring ports' source lists compare simply.
+  channel_port_source = {
+    for port in local.channel_ports : port => (
+      !contains(keys(var.channel_port_sources), port) ? "0.0.0.0/0" : join(",", sort(distinct(concat(
+        local.trusted_cidrs,
+        [strcontains(var.channel_port_sources[port], "/") ? var.channel_port_sources[port] : "${var.channel_port_sources[port]}/32"]
+      ))))
+    )
+  }
+
+  # The NLB security group is shared with other apps and capped on rules, so
+  # consecutive open ports with the same sources share rules: by default all
+  # of them are one public rule. A run starts where the sources change and
+  # ends before the next change.
+  channel_ingress_runs = {
+    for start in local.channel_port_numbers : "${start}" => {
+      from = start
+      to = [
+        for port in local.channel_port_numbers : port
+        if port >= start && lookup(local.channel_port_source, "${port + 1}", "") != local.channel_port_source["${port}"]
+      ][0]
+      cidrs = split(",", local.channel_port_source["${start}"])
+    }
+    if lookup(local.channel_port_source, "${start - 1}", "") != local.channel_port_source["${start}"]
+  }
+  # One NLB rule per run and source.
+  channel_ingress_rules = merge([
+    for start, run in local.channel_ingress_runs : {
+      for cidr in run.cidrs : "${start} ${cidr}" => { from = run.from, to = run.to, cidr = cidr }
+    }
+  ]...)
+
+  # What reaches the task directly (not through a load balancer): the trusted
+  # ranges and security group, on every port it exposes.
+  task_exposed_ports = {
+    admin   = { from = 8443, to = 8443 }
+    channel = { from = local.channel_port_range.min, to = local.channel_port_range.max }
+  }
+  task_trusted_cidr_rules = merge([
+    for name, ports in local.task_exposed_ports : {
+      for cidr in local.trusted_cidrs : "${name} ${cidr}" => merge(ports, { cidr = cidr })
+    }
+  ]...)
 
   # The engine container's start command. appdata (EFS) persists across tasks,
   # and after first boot the keystore there also holds the engine's

@@ -24,14 +24,48 @@ VPC, subnets, ECR and RDS values come from the `shared-outputs.json` artifact
 fetched from `infra/awsshardmoduleprod`.
 
 The admin/API endpoint uses the shared ALB. EFS persists OIE `appdata`, including
-`keystore.jks`, across task replacement. Terraform creates TCP target groups for
-ports 8081 and 6661 (channel traffic - HTTP and MLLP by default) and owns their
-listeners directly on the shared NLB (`load_balancing.tf`'s `aws_lb_listener.channel`),
-since the ECS service requires each target group to already have an associated
-load balancer at creation time. The NLB is shared with other apps, so this
-requires `nlb_arn` from `awsshardmoduleprod`'s shared output, and the NLB's own
-security group (`awsshardmoduleprod`) needs inbound rules for these ports for
-external channel clients to actually reach them.
+`keystore.jks`, across task replacement.
+
+Channel traffic goes through the shared NLB. Each deployment reserves 100 ports
+(`locals.channel_port_ranges`: staging/oie 50000-50099, production/oie1
+50500-50599), and the plan job fails if another app has a listener anywhere in
+its range. An NLB listener serves exactly one port, so only the first
+`CHANNEL_PORT_COUNT` ports of the range (default 20) are open, each with its own
+listener and target group; raise it per environment to open more. Open ports
+are public (`0.0.0.0/0`) unless `CHANNEL_PORT_SOURCES` restricts them, as
+comma-separated `port=source` pairs (e.g. `50003=203.0.113.7,50004=10.1.0.0/16`;
+a bare address means that host). A restricted port also allows the trusted
+ranges. Ports sharing the same sources share NLB security-group rules, so by
+default there's one.
+
+An ECS service attaches at most 5 target groups, so the running task is
+registered in the channel target groups by a small Lambda
+(`channel_targets.tf`, `lambda/channel_targets.py`) instead. It reconciles
+every channel target group to the service's running task on each task state
+change and every 5 minutes; its logs are in `/aws/lambda/<name>-channel-targets`.
+The CI deploy role needs Lambda and EventBridge permissions for it. The shared
+NLB's default quota is 50 listeners, which 20 ports in each of staging and
+production/oie1 nearly use up on their own - raise it before adding instances
+or ports.
+
+The console and direct access to the task are limited to trusted sources;
+channel ports through the NLB are public unless restricted:
+
+- The trusted ranges (`TRUSTED_CIDRS`) are the only sources that reach the
+  console on the shared ALB (443): both admin listener rules carry a
+  `source_ip` condition, so anyone else falls through to the listener's other
+  rules and default action. The ALB's own security group is shared with other
+  apps and is left alone. An ALB rule takes at most 5 condition values, and the
+  `/` redirect rule already uses two, so there can be at most 3 ranges.
+- The trusted ranges also reach every port the task exposes: 8443 and the
+  reserved channel range directly on the task security group (which needs
+  them routable into the VPC, e.g. over VPN), and every open channel port
+  through the NLB. Open channel ports allow 0.0.0.0/0 through the NLB unless
+  `CHANNEL_PORT_SOURCES` restricts them, and a restricted port still allows
+  the trusted ranges.
+- Security group `sg-060fae9516e3f4737` (`trusted_security_group_id`) reaches
+  8443 and the reserved channel range directly. 80/443 are only on the ALB, so
+  it gets nothing there.
 
 Each environment's database (`RDS_DATABASE_NAME`) on the shared RDS instance is
 created by Terraform during apply (`database.tf`): it runs a one-off `db-init`
@@ -59,6 +93,8 @@ Required GitLab variables:
   NLB security group, ECS cluster, ALB listener, subnets and ECR repository
   are read from the shared artifact.
   If the fetched artifact omits the RDS security-group ID, set `RDS_SECURITY_GROUP_ID` explicitly.
+- Environment-scoped `TRUSTED_CIDRS`: 1-3 comma-separated addresses or CIDRs
+  (see above). The plan fails without it.
 - `OIE_ADMIN_PASSWORD`, `KEYSTORE_PASSWORD`, and `OIE_KEYSTORE_B64`.
   The RDS secret must contain `username` and `password`.
   The plan job fails if `KEYSTORE_PASSWORD` does not open `OIE_KEYSTORE_B64`.
@@ -71,6 +107,8 @@ Required GitLab variables:
   `keystore.jks.replaced-<value>` and installs `OIE_KEYSTORE_B64` (or generates
   one). Data encrypted under the old keystore is unreadable until it is moved
   back, so only do this where that is acceptable.
+- Optional environment-scoped `CHANNEL_PORT_COUNT` and `CHANNEL_PORT_SOURCES`:
+  how many channel ports to open, and per-port source restrictions (see above).
 
 Local Kubernetes additionally needs `KUBE_CONFIG_B64`, `DATABASE_URL`,
 `RDS_MASTER_USERNAME`, and `RDS_MASTER_PASSWORD`. It deploys one utility engine;
