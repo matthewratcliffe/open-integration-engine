@@ -64,7 +64,7 @@ variable "channel_port_sources" {
 }
 
 variable "trusted_cidrs" {
-  description = "Trusted IPv4 addresses or CIDRs (a bare address means that host). Only they reach the admin console through the shared ALB (443), and they reach every port the task exposes: 8443 and the reserved channel range directly, and the open channel ports through the NLB."
+  description = "Trusted IPv4 addresses or CIDRs (a bare address means that host). Only they reach the admin console through the shared ALB (443), and they are also allowed on any channel port that channel_port_sources restricts. The task itself only accepts connections from the ALB and NLB."
   type        = list(string)
   default     = []
 
@@ -81,12 +81,6 @@ variable "trusted_cidrs" {
     condition     = length(var.trusted_cidrs) >= 1 && length(var.trusted_cidrs) <= 3
     error_message = "trusted_cidrs (CI: TRUSTED_CIDRS) needs 1 to 3 entries - the admin console would otherwise be open to everyone, and an ALB rule can't match more than 3 source CIDRs alongside its host and path."
   }
-}
-
-variable "trusted_security_group_id" {
-  description = "Security group whose members reach every port the task exposes (8443 and the reserved channel range) directly. 80/443 are on the ALB, not the task, so this grants nothing there."
-  type        = string
-  default     = "sg-060fae9516e3f4737"
 }
 
 variable "nlb_security_group_id" { type = string }

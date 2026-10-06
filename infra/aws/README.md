@@ -48,8 +48,9 @@ NLB's default quota is 50 listeners, which 20 ports in each of staging and
 production/oie1 nearly use up on their own - raise it before adding instances
 or ports.
 
-The console and direct access to the task are limited to trusted sources;
-channel ports through the NLB are public unless restricted:
+The task only accepts connections from the shared ALB (8443) and NLB (the
+reserved channel range), never directly. The console is limited to trusted
+sources; channel ports through the NLB are public unless restricted:
 
 - The trusted ranges (`TRUSTED_CIDRS`) are the only sources that reach the
   console on the shared ALB (443): both admin listener rules carry a
@@ -57,15 +58,9 @@ channel ports through the NLB are public unless restricted:
   rules and default action. The ALB's own security group is shared with other
   apps and is left alone. An ALB rule takes at most 5 condition values, and the
   `/` redirect rule already uses two, so there can be at most 3 ranges.
-- The trusted ranges also reach every port the task exposes: 8443 and the
-  reserved channel range directly on the task security group (which needs
-  them routable into the VPC, e.g. over VPN), and every open channel port
-  through the NLB. Open channel ports allow 0.0.0.0/0 through the NLB unless
+- Open channel ports allow 0.0.0.0/0 through the NLB unless
   `CHANNEL_PORT_SOURCES` restricts them, and a restricted port still allows
   the trusted ranges.
-- Security group `sg-060fae9516e3f4737` (`trusted_security_group_id`) reaches
-  8443 and the reserved channel range directly. 80/443 are only on the ALB, so
-  it gets nothing there.
 
 Each environment's database (`RDS_DATABASE_NAME`) on the shared RDS instance is
 created by Terraform during apply (`database.tf`): it runs a one-off `db-init`

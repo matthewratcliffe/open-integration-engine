@@ -42,28 +42,6 @@ resource "aws_vpc_security_group_ingress_rule" "nlb_channel" {
   ip_protocol       = "tcp"
   description       = "OIE (${local.deployment}) channel traffic"
 }
-# Direct to the task, bypassing the load balancers: the trusted ranges and
-# security group reach every port it exposes (8443 and the reserved channel
-# range). 80/443 are only on the shared ALB, where the trusted ranges are
-# enforced by the listener rules' source_ip condition (load_balancing.tf).
-resource "aws_vpc_security_group_ingress_rule" "trusted_cidr" {
-  for_each          = local.task_trusted_cidr_rules
-  security_group_id = aws_security_group.task.id
-  cidr_ipv4         = each.value.cidr
-  from_port         = each.value.from
-  to_port           = each.value.to
-  ip_protocol       = "tcp"
-  description       = "Trusted range, direct"
-}
-resource "aws_vpc_security_group_ingress_rule" "trusted_security_group" {
-  for_each                     = local.task_trusted_security_group_ports
-  security_group_id            = aws_security_group.task.id
-  referenced_security_group_id = var.trusted_security_group_id
-  from_port                    = each.value.from
-  to_port                      = each.value.to
-  ip_protocol                  = "tcp"
-  description                  = "Trusted security group, direct"
-}
 resource "aws_vpc_security_group_ingress_rule" "database" {
   security_group_id            = var.rds_security_group_id
   referenced_security_group_id = aws_security_group.task.id
