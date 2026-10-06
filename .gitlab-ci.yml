@@ -189,7 +189,7 @@ push-ecr:
     - export TF_VAR_keystore_reset="${KEYSTORE_RESET:-}"
     - 'if [ -n "${OIE_EXTENSION_URLS:-}" ]; then export TF_VAR_extension_urls="$(jq -cRn --arg s "$OIE_EXTENSION_URLS" ''$s | split(",")'')"; fi'
     # Optional, environment-scoped: CHANNEL_PORT_COUNT opens the first N ports
-    # of the deployment's reserved range (default 20); CHANNEL_PORT_SOURCES
+    # of the deployment's reserved range (default 4); CHANNEL_PORT_SOURCES
     # restricts ports to a source, as port=address-or-CIDR pairs, e.g.
     # "50003=203.0.113.7,50004=10.1.0.0/16" (on top of TRUSTED_CIDRS).
     - 'if [ -n "${CHANNEL_PORT_COUNT:-}" ]; then export TF_VAR_channel_port_count="$CHANNEL_PORT_COUNT"; fi'

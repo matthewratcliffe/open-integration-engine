@@ -30,7 +30,7 @@ Channel traffic goes through the shared NLB. Each deployment reserves 100 ports
 (`locals.channel_port_ranges`: staging/oie 50000-50099, production/oie1
 50500-50599), and the plan job fails if another app has a listener anywhere in
 its range. An NLB listener serves exactly one port, so only the first
-`CHANNEL_PORT_COUNT` ports of the range (default 20) are open, each with its own
+`CHANNEL_PORT_COUNT` ports of the range (default 4) are open, each with its own
 listener and target group; raise it per environment to open more. Open ports
 are public (`0.0.0.0/0`) unless `CHANNEL_PORT_SOURCES` restricts them, as
 comma-separated `port=source` pairs (e.g. `50003=203.0.113.7,50004=10.1.0.0/16`;
@@ -44,9 +44,8 @@ registered in the channel target groups by a small Lambda
 every channel target group to the service's running task on each task state
 change and every 5 minutes; its logs are in `/aws/lambda/<name>-channel-targets`.
 The CI deploy role needs Lambda and EventBridge permissions for it. The shared
-NLB's default quota is 50 listeners, which 20 ports in each of staging and
-production/oie1 nearly use up on their own - raise it before adding instances
-or ports.
+NLB's default quota is 50 listeners, shared with the other apps on it - check
+there's room before adding instances or ports.
 
 The task only accepts connections from the shared ALB (8443) and NLB (the
 reserved channel range), never directly. The console can be limited to

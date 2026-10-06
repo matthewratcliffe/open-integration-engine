@@ -33,7 +33,7 @@ variable "rds_security_group_id" { type = string }
 variable "channel_port_count" {
   description = "How many channel ports to open on the shared NLB: the first N of this deployment's reserved range (locals.channel_port_ranges), each with its own listener and target group. Raise it to expand; the rest of the range stays reserved but closed."
   type        = number
-  default     = 20
+  default     = 4
 
   validation {
     condition     = var.channel_port_count >= 0 && floor(var.channel_port_count) == var.channel_port_count
