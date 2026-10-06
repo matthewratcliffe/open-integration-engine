@@ -64,7 +64,7 @@ variable "channel_port_sources" {
 }
 
 variable "trusted_cidrs" {
-  description = "Trusted IPv4 addresses or CIDRs (a bare address means that host). Only they reach the admin console through the shared ALB (443), and they are also allowed on any channel port that channel_port_sources restricts. The task itself only accepts connections from the ALB and NLB."
+  description = "Trusted IPv4 addresses or CIDRs (a bare address means that host). When set, only they reach the admin console through the shared ALB (443) - empty leaves it public - and they are also allowed on any channel port that channel_port_sources restricts. The task itself only accepts connections from the ALB and NLB."
   type        = list(string)
   default     = []
 
@@ -78,8 +78,8 @@ variable "trusted_cidrs" {
   # An ALB rule takes at most 5 condition values in total, and the / redirect
   # rule already uses two (host and path) - so at most 3 source CIDRs.
   validation {
-    condition     = length(var.trusted_cidrs) >= 1 && length(var.trusted_cidrs) <= 3
-    error_message = "trusted_cidrs (CI: TRUSTED_CIDRS) needs 1 to 3 entries - the admin console would otherwise be open to everyone, and an ALB rule can't match more than 3 source CIDRs alongside its host and path."
+    condition     = length(var.trusted_cidrs) <= 3
+    error_message = "trusted_cidrs (CI: TRUSTED_CIDRS) takes at most 3 entries - an ALB rule can't match more than 3 source CIDRs alongside its host and path."
   }
 }
 

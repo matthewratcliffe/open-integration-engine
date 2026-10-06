@@ -49,15 +49,17 @@ production/oie1 nearly use up on their own - raise it before adding instances
 or ports.
 
 The task only accepts connections from the shared ALB (8443) and NLB (the
-reserved channel range), never directly. The console is limited to trusted
-sources; channel ports through the NLB are public unless restricted:
+reserved channel range), never directly. The console can be limited to
+trusted sources; channel ports through the NLB are public unless restricted:
 
-- The trusted ranges (`TRUSTED_CIDRS`) are the only sources that reach the
+- When `TRUSTED_CIDRS` is set, those ranges are the only sources that reach the
   console on the shared ALB (443): both admin listener rules carry a
   `source_ip` condition, so anyone else falls through to the listener's other
   rules and default action. The ALB's own security group is shared with other
   apps and is left alone. An ALB rule takes at most 5 condition values, and the
-  `/` redirect rule already uses two, so there can be at most 3 ranges.
+  `/` redirect rule already uses two, so there can be at most 3 ranges. With
+  `TRUSTED_CIDRS` unset the rules have no source condition and the console is
+  public.
 - Open channel ports allow 0.0.0.0/0 through the NLB unless
   `CHANNEL_PORT_SOURCES` restricts them, and a restricted port still allows
   the trusted ranges.
@@ -88,8 +90,8 @@ Required GitLab variables:
   NLB security group, ECS cluster, ALB listener, subnets and ECR repository
   are read from the shared artifact.
   If the fetched artifact omits the RDS security-group ID, set `RDS_SECURITY_GROUP_ID` explicitly.
-- Environment-scoped `TRUSTED_CIDRS`: 1-3 comma-separated addresses or CIDRs
-  (see above). The plan fails without it.
+- Optional environment-scoped `TRUSTED_CIDRS`: up to 3 comma-separated
+  addresses or CIDRs (see above). Unset leaves the console public.
 - `OIE_ADMIN_PASSWORD`, `KEYSTORE_PASSWORD`, and `OIE_KEYSTORE_B64`.
   The RDS secret must contain `username` and `password`.
   The plan job fails if `KEYSTORE_PASSWORD` does not open `OIE_KEYSTORE_B64`.

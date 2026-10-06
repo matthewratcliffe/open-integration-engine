@@ -194,9 +194,9 @@ push-ecr:
     # "50003=203.0.113.7,50004=10.1.0.0/16" (on top of TRUSTED_CIDRS).
     - 'if [ -n "${CHANNEL_PORT_COUNT:-}" ]; then export TF_VAR_channel_port_count="$CHANNEL_PORT_COUNT"; fi'
     - 'if [ -n "${CHANNEL_PORT_SOURCES:-}" ]; then TF_VAR_channel_port_sources="$(jq -cRn --arg s "$CHANNEL_PORT_SOURCES" ''$s | gsub("[[:space:]]"; "") | split(",") | map(select(. != "") | split("=") | if length == 2 then {(.[0]): .[1]} else error("CHANNEL_PORT_SOURCES entries must be port=source, not \(join("="))") end) | add // {}'')"; export TF_VAR_channel_port_sources; fi'
-    # TRUSTED_CIDRS: 1-3 comma-separated addresses or CIDRs - the only sources
-    # that reach the console through the ALB, and that reach every port the
-    # task exposes. Terraform's validation fails the plan when it is unset.
+    # TRUSTED_CIDRS: up to 3 comma-separated addresses or CIDRs - the only
+    # sources that reach the console through the ALB, also allowed on restricted
+    # channel ports. Unset leaves the console public.
     - 'if [ -n "${TRUSTED_CIDRS:-}" ]; then TF_VAR_trusted_cidrs="$(jq -cRn --arg s "$TRUSTED_CIDRS" ''$s | gsub("[[:space:]]"; "") | split(",") | map(select(. != ""))'')"; export TF_VAR_trusted_cidrs; fi'
     - terraform -chdir="$TF_ROOT" init -backend-config="environments/$DEPLOY_ENV-$DEPLOY_INSTANCE.backend.hcl"
     # The NLB is shared too, and this deployment's whole reserved port range is
@@ -267,7 +267,7 @@ deploy-local-k8s:
 # Production instances. Each is its own engine at <instance>.htrak.com with its
 # own GitLab environment, production/<instance>, which scopes its variables:
 # RDS_DATABASE_NAME, AWS_ALB_PRIORITY, AWS_ALB_REDIRECT_PRIORITY,
-# KEYSTORE_PASSWORD, OIE_KEYSTORE_B64, TRUSTED_CIDRS (and optionally KEYSTORE_RESET,
+# KEYSTORE_PASSWORD, OIE_KEYSTORE_B64 (and optionally TRUSTED_CIDRS, KEYSTORE_RESET,
 # OIE_EXTENSION_URLS, CHANNEL_PORT_COUNT, CHANNEL_PORT_SOURCES). To add oie2: copy the two oie1 jobs below, add
 # infra/aws/environments/production-oie2.backend.hcl and an NLB port range in
 # infra/aws/locals.tf, and set those variables for production/oie2.

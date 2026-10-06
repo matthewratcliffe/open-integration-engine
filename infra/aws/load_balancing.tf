@@ -26,11 +26,15 @@ resource "aws_lb_listener_rule" "admin" {
   condition {
     host_header { values = [var.admin_host_header] }
   }
-  # Only the trusted ranges reach the console. The shared ALB's own security
-  # group stays open for the other apps behind it; anyone else falls through
-  # to the listener's later rules and default action.
-  condition {
-    source_ip { values = local.trusted_cidrs }
+  # With trusted ranges set, only they reach the console: the shared ALB's own
+  # security group stays open for the other apps behind it, so anyone else
+  # falls through to the listener's later rules and default action. With none
+  # set the console is public - an ALB condition can't have an empty list.
+  dynamic "condition" {
+    for_each = length(local.trusted_cidrs) > 0 ? [local.trusted_cidrs] : []
+    content {
+      source_ip { values = condition.value }
+    }
   }
   action {
     type             = "forward"
@@ -52,8 +56,11 @@ resource "aws_lb_listener_rule" "admin_root_redirect" {
   condition {
     path_pattern { values = ["/"] }
   }
-  condition {
-    source_ip { values = local.trusted_cidrs }
+  dynamic "condition" {
+    for_each = length(local.trusted_cidrs) > 0 ? [local.trusted_cidrs] : []
+    content {
+      source_ip { values = condition.value }
+    }
   }
   action {
     type = "redirect"
