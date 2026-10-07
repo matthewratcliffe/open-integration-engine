@@ -21,6 +21,7 @@
 #     verified, in /opt/engine -- the same layout the Docker image has
 #   * docker/entrypoint.sh, unchanged, as the oie systemd service's start
 #     command, so every variable documented in .env.example means the same here
+#   * the console and API on 443, and nginx on 80 redirecting to it
 #   * the admin password rotation that the compose `bootstrap` service does
 #
 # Configuration comes from SSM: set OIE_SSM_PATH and every SSM parameter
@@ -155,6 +156,16 @@ DB_NAME="${BASH_REMATCH[4]}"
 DATABASE_USERNAME="${DATABASE_USERNAME:-${POSTGRES_USER:-mirthdb}}"
 DATABASE_PASSWORD="${DATABASE_PASSWORD:-${POSTGRES_PASSWORD:-}}"
 require DATABASE_PASSWORD "the password for the engine's database user, ${DATABASE_USERNAME}"
+
+# The console and API on the standard port, and port 80 only redirecting to
+# it -- not the engine's own plaintext listener (HTTP_PORT), which stays off.
+HTTPS_PORT="${HTTPS_PORT:-443}"
+HTTP_REDIRECT="${HTTP_REDIRECT:-true}"
+[[ "$HTTPS_PORT" =~ ^[0-9]+$ && "$HTTPS_PORT" != 80 ]] \
+    || die "HTTPS_PORT must be a port number other than 80, not ${HTTPS_PORT}"
+if [[ "$HTTP_REDIRECT" == true && "${HTTP_PORT:-0}" == 80 ]]; then
+    die "HTTP_PORT=80 puts the engine's plaintext listener where the HTTPS redirect goes: set HTTP_REDIRECT=false too, or leave HTTP_PORT off"
+fi
 
 # The release and plugins are whatever the bundle carries (release.env).
 INCLUDE_ADMIN_CLIENT="${INCLUDE_ADMIN_CLIENT:-true}"
@@ -395,6 +406,7 @@ render_env() {
     env_line KEYSTORE_KEYPASS "$KEYSTORE_PASSWORD"
     env_line _MP_SERVER_INITIALADMINPASSWORD "$OIE_ADMIN_PASSWORD"
     env_line HTTP_PORT "${HTTP_PORT:-0}"
+    env_line HTTPS_PORT "$HTTPS_PORT"
     env_line _MP_SERVER_API_XFRAMEOPTIONS "${API_XFRAME_OPTIONS:-SAMEORIGIN}"
     env_line _MP_SERVER_API_CONTENTSECURITYPOLICY "${API_CSP:-frame-ancestors 'self'}"
     env_line OIE_UPDATE_CHECK "${OIE_UPDATE_CHECK:-true}"
@@ -404,7 +416,7 @@ render_env() {
     env_line TZ "${TZ:-UTC}"
 
     # Everything else the entrypoint understands passes straight through:
-    # HTTPS_PORT, SESSION_STORE, SERVER_ID, VMOPTIONS, KEYSTORE_BASE64,
+    # SESSION_STORE, SERVER_ID, VMOPTIONS, KEYSTORE_BASE64,
     # KEYSTORE_RESET, the other _MP_* and OIE_* settings (OIDC, cluster,
     # extension URLs), *_DOWNLOAD, *_FILE, ...
     local name
@@ -414,12 +426,12 @@ render_env() {
             DATABASE|DATABASE_URL|DATABASE_USERNAME|DATABASE_PASSWORD|DATABASE_MAX_CONNECTIONS|\
             DATABASE_READONLY_MAX_CONNECTIONS|DATABASE_MAX_RETRY|DATABASE_RETRY_WAIT|\
             KEYSTORE_STOREPASS|KEYSTORE_KEYPASS|KEYSTORE_PASSWORD|_MP_SERVER_INITIALADMINPASSWORD|\
-            _MP_SERVER_API_XFRAMEOPTIONS|_MP_SERVER_API_CONTENTSECURITYPOLICY|HTTP_PORT|\
+            _MP_SERVER_API_XFRAMEOPTIONS|_MP_SERVER_API_CONTENTSECURITYPOLICY|HTTP_PORT|HTTPS_PORT|\
             OIE_UPDATE_CHECK|OIE_UPDATE_CHECK_EXTENSIONS|OIE_HEAP_MAX|OIE_VERSION|TZ|\
             OIE_ADMIN_PASSWORD|OIE_SSM_PATH|OIE_SHA256|OIE_TARBALL_URL|OIE_BUILTIN_PLUGIN_URLS|\
-            OIE_WAIT_TIMEOUT)
+            OIE_WAIT_TIMEOUT|HTTP_REDIRECT)
                 continue ;;
-            OIE_*|_MP_*|KEYSTORE_*|DATABASE*|HTTPS_PORT|SESSION_STORE|SERVER_ID|VMOPTIONS|DELAY|*_DOWNLOAD|*_FILE)
+            OIE_*|_MP_*|KEYSTORE_*|DATABASE*|SESSION_STORE|SERVER_ID|VMOPTIONS|DELAY|*_DOWNLOAD|*_FILE)
                 env_line "$name" "${!name}" ;;
         esac
     done < <(compgen -e | sort)
@@ -461,13 +473,56 @@ systemctl restart oie
 log "oie.service started -- journalctl -u oie -f to follow it"
 
 ########################################################################
+# Port 80: a redirect to HTTPS, nothing else
+########################################################################
+# nginx with a config of its own, replacing the distribution's, so neither
+# Amazon Linux's built-in server block nor Ubuntu's default site is served.
+NGINX_CONF=/etc/nginx/nginx.conf
+NGINX_MARK="# Written by the OIE installer (deploy/ec2/install.sh)"
+if [[ "$HTTP_REDIRECT" == true ]]; then
+    command -v nginx >/dev/null || pkg_install nginx
+    if [[ $PKG == dnf ]]; then nginx_user=nginx; else nginx_user=www-data; fi
+    if [[ "$HTTPS_PORT" == 443 ]]; then https_authority='$host'; else https_authority="\$host:${HTTPS_PORT}"; fi
+    cat > "${NGINX_CONF}.new" <<EOF
+${NGINX_MARK}; re-running it rewrites this file.
+user ${nginx_user};
+pid /run/nginx.pid;
+worker_processes 1;
+error_log /var/log/nginx/error.log warn;
+
+events { worker_connections 256; }
+
+http {
+    access_log off;
+    server_tokens off;
+    server {
+        listen 80 default_server;
+        return 301 https://${https_authority}\$request_uri;
+    }
+}
+EOF
+    nginx -t -q -c "${NGINX_CONF}.new" || die "the generated nginx config does not load"
+    mv "${NGINX_CONF}.new" "$NGINX_CONF"
+    systemctl enable nginx >/dev/null
+    systemctl restart nginx
+    log "port 80 redirects to https on ${HTTPS_PORT}"
+elif grep -qF "$NGINX_MARK" "$NGINX_CONF" 2>/dev/null; then
+    systemctl disable --now nginx >/dev/null 2>&1 || true
+    log "HTTP_REDIRECT=false: stopped the port 80 redirect"
+fi
+
+########################################################################
 # Admin password
 ########################################################################
 # Same job as the compose `bootstrap` service: 4.6.0 seeds admin/admin, so
 # rotate it before anyone else finds the port. Idempotent. The first boot
 # creates the schema on RDS, which takes a few minutes.
-OIE_URL="https://127.0.0.1:${HTTPS_PORT:-8443}/api" OIE_INSECURE=true \
+OIE_URL="https://127.0.0.1:${HTTPS_PORT}/api" OIE_INSECURE=true \
     OIE_ADMIN_PASSWORD="$OIE_ADMIN_PASSWORD" OIE_WAIT_TIMEOUT="${OIE_WAIT_TIMEOUT:-600}" \
     "$SCRIPTS_DIR/oie-bootstrap-admin.sh"
 
-log "done: https://<this host>:${HTTPS_PORT:-8443}/ (user admin)"
+if [[ "$HTTPS_PORT" == 443 ]]; then
+    log "done: https://<this host>/ (user admin)"
+else
+    log "done: https://<this host>:${HTTPS_PORT}/ (user admin)"
+fi

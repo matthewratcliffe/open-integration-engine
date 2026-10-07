@@ -63,8 +63,8 @@ expired.
   Delete old `oie-ec2` versions from Deploy > Package registry now and then;
   the job token cannot delete them itself.
 - **Security groups**: RDS allows 5432 from the instance; the instance allows
-  8443 (console and API) from your admin ranges, plus the ports your channels
-  listen on.
+  443 (console and API) and 80 (redirect only) from your admin ranges, plus
+  the ports your channels listen on.
 - **DNS**: `oie1.htrak.com` pointing at the instance's Elastic IP.
 
 ## Variables
@@ -101,7 +101,8 @@ Optional:
 | `KEYSTORE_BASE64` | a keystore to install when the instance has none, `base64 -w0 keystore.jks`. Defaults to `OIE_KEYSTORE_B64`. Recommended: see below |
 | `KEYSTORE_RESET` | set to a new value to deliberately replace the keystore, as on ECS |
 | `OIE_HEAP_MAX` | default `1g` |
-| `HTTPS_PORT` | console and API port, default `8443`. `443` works too |
+| `HTTPS_PORT` | console and API port, default `443` |
+| `HTTP_REDIRECT` | default `true`: nginx on port 80 answers every request with a redirect to HTTPS, and serves nothing else. `false` stops it |
 | `OIE_EXTENSION_URLS`, `OIE_UPDATE_CHECK`, `TZ` | as in `.env.example` |
 
 Anything else the entrypoint understands (`OIE_OIDC_*`, `_MP_*`, ...) works as
@@ -116,11 +117,12 @@ the commit being deployed.
 2. Run `deploy-ec2-production-oie1` on a `main` pipeline. The first deploy
    creates the schema on RDS, which takes a few minutes; it finishes when the
    admin password has been rotated.
-3. Browse to `https://oie1.htrak.com:8443/`, or `/oie-webadmin/` with the web
-   administrator extension installed, and push configuration as usual:
+3. Browse to `https://oie1.htrak.com/` (or plain `http://`, which redirects),
+   or `/oie-webadmin/` with the web administrator extension installed, and push
+   configuration as usual:
 
    ```
-   OIE_URL=https://oie1.htrak.com:8443/api OIE_PASSWORD=... \
+   OIE_URL=https://oie1.htrak.com/api OIE_PASSWORD=... \
        ./scripts/oie-config-push.sh
    ```
 
@@ -135,6 +137,14 @@ sudo /opt/oie/bundle/install.sh
 ```
 
 It remembers `OIE_SSM_PATH` from the last run.
+
+## Ports
+
+The engine serves the console and API itself on 443 with the certificate
+below; the service has `CAP_NET_BIND_SERVICE`, so it still runs as `engine`.
+Port 80 is nginx, configured only to redirect to `https://<host><path>`. The
+engine's own plaintext listener (`HTTP_PORT`) stays off, as in compose: the API
+is HTTPS-only, so a console served over HTTP could not sign in anyway.
 
 ## The certificate
 
@@ -171,6 +181,7 @@ limit, so store it as an Advanced parameter (`--tier Advanced`).
 | `/etc/oie/oie.env` | the rendered environment, root-only |
 | `/etc/oie/tls/` | the certificate and key from SSM, readable by the engine only |
 | `/etc/systemd/system/oie.service` | the service |
+| `/etc/nginx/nginx.conf` | the port 80 redirect, rewritten by each deploy |
 | `journalctl -u oie -f` | startup and the entrypoint's output |
 | `/opt/engine/logs/mirth.log` | the engine's own log |
 | `/var/log/oie-install.log` | every deploy's full output |
