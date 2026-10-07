@@ -26,7 +26,7 @@ on a `main` pipeline, signs in to AWS with the existing GitLab deploy role and:
    (`TLS_CERT_PEM`/`TLS_KEY_PEM`) after checking the key matches and the
    certificate has not expired;
 3. builds the bundle - the installer, the entrypoint, the scripts, the engine
-   release and the plugins, each verified against its pinned checksum - and
+   release, the plugins and the community extensions, each verified against its pinned checksum - and
    uploads it to this project's generic package registry as
    `oie-ec2/<commit>/oie-ec2.tar.gz` (Deploy > Package registry);
 4. sends an SSM Run Command. The SSM agent on the instance picks it up,
@@ -103,7 +103,8 @@ Optional:
 | `OIE_HEAP_MAX` | default `1g` |
 | `HTTPS_PORT` | console and API port, default `443` |
 | `HTTP_REDIRECT` | default `true`: nginx on port 80 answers every request with a redirect to HTTPS, and serves nothing else. `false` stops it |
-| `OIE_EXTENSION_URLS`, `OIE_UPDATE_CHECK`, `TZ` | as in `.env.example` |
+| `OIE_EXTENSION_URLS` | the community extensions, replacing the whole list. Defaults to ECS's `extension_urls` (`infra/aws/variables.tf`): Web Support, which serves `/oie-webadmin/`, Sentinel, Thread Viewer, TLS Manager and OIDC auth. Bundled at deploy time, not copied to SSM |
+| `OIE_UPDATE_CHECK`, `TZ` | as in `.env.example` |
 
 Anything else the entrypoint understands (`OIE_OIDC_*`, `_MP_*`, ...) works as
 an SSM parameter put there by hand; the deploy copies only the names above.

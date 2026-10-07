@@ -275,6 +275,12 @@ mkdir -p "$APP_DIR/custom-extensions"
 find "$APP_DIR/custom-extensions" -mindepth 1 -delete
 find "$HERE/extensions" -mindepth 1 -maxdepth 1 \
     -exec cp -a {} "$APP_DIR/custom-extensions/" \;
+# Plus the community extensions (Web Support, OIDC auth, ...) that compose and
+# ECS download at boot through OIE_EXTENSION_URLS: package.sh bundled them, as
+# this instance has no GitHub access.
+find "$HERE/payload/extensions" -mindepth 1 -maxdepth 1 -name '*.zip' \
+    -exec cp -a {} "$APP_DIR/custom-extensions/" \;
+log "custom extensions: $(find "$APP_DIR/custom-extensions" -mindepth 1 -maxdepth 1 -name '*.zip' -printf '%f\n' | sort | paste -sd' ' -)"
 chown -R engine:engine "$APP_DIR"
 
 ########################################################################
@@ -429,7 +435,8 @@ render_env() {
             _MP_SERVER_API_XFRAMEOPTIONS|_MP_SERVER_API_CONTENTSECURITYPOLICY|HTTP_PORT|HTTPS_PORT|\
             OIE_UPDATE_CHECK|OIE_UPDATE_CHECK_EXTENSIONS|OIE_HEAP_MAX|OIE_VERSION|TZ|\
             OIE_ADMIN_PASSWORD|OIE_SSM_PATH|OIE_SHA256|OIE_TARBALL_URL|OIE_BUILTIN_PLUGIN_URLS|\
-            OIE_WAIT_TIMEOUT|HTTP_REDIRECT)
+            OIE_WAIT_TIMEOUT|HTTP_REDIRECT|\
+            OIE_EXTENSION_URLS)  # bundled instead, see custom-extensions above
                 continue ;;
             OIE_*|_MP_*|KEYSTORE_*|DATABASE*|SESSION_STORE|SERVER_ID|VMOPTIONS|DELAY|*_DOWNLOAD|*_FILE)
                 env_line "$name" "${!name}" ;;
