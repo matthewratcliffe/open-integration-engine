@@ -314,8 +314,9 @@ deploy-local-k8s:
   environment: {name: local-k8s}
   rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
 
-# Production instances. Each is its own engine at <instance>.htrak.com with its
-# own GitLab environment, production/<instance>, which scopes its variables:
+# Production instances. Each is its own engine at <instance>.htrak.com, unless
+# its jobs set OIE_HOSTNAME (oie1 is at oie.htrak.com: oie1.htrak.com is the
+# EC2 instance, deploy/ec2), with its own GitLab environment, production/<instance>, which scopes its variables:
 # RDS_DATABASE_NAME, AWS_ALB_PRIORITY, AWS_ALB_REDIRECT_PRIORITY,
 # KEYSTORE_PASSWORD, OIE_KEYSTORE_B64 (and optionally TRUSTED_CIDRS, KEYSTORE_RESET,
 # OIE_EXTENSION_URLS, CHANNEL_PORT_COUNT, CHANNEL_PORT_SOURCES). To add oie2: copy the two oie1 jobs below, add
@@ -344,7 +345,7 @@ deploy-local-k8s:
 
 plan-aws-production-oie1:
   extends: .plan-aws-production
-  variables: {DEPLOY_INSTANCE: oie1}
+  variables: {DEPLOY_INSTANCE: oie1, OIE_HOSTNAME: oie.htrak.com}
 
 deploy-aws-production-oie1:
   extends: .deploy-aws-production
@@ -352,4 +353,28 @@ deploy-aws-production-oie1:
     - job: plan-aws-production-oie1
     - job: fetch-shared-outputs
       artifacts: true
-  variables: {DEPLOY_INSTANCE: oie1}
+  variables: {DEPLOY_INSTANCE: oie1, OIE_HOSTNAME: oie.htrak.com}
+
+# The EC2 instance running without Docker (deploy/ec2) at oie1.htrak.com.
+# Builds the installer bundle, publishes the *.htrak.com certificate
+# (TLS_CERT_PEM/TLS_KEY_PEM) to SSM, uploads the bundle to this project's
+# package registry and has SSM Run Command download and install it on the
+# instance -- nothing connects to the instance directly. Scoped to
+# production/oie1: EC2_INSTANCE_NAME (the instance's Name tag) and
+# EC2_SSM_PATH. See deploy/ec2/README.md.
+deploy-ec2-production-oie1:
+  extends: .aws-oidc
+  stage: production
+  image: alpine:3.22
+  tags: [docker]
+  needs:
+    - job: fetch-shared-outputs
+      artifacts: true
+  script:
+    - apk add --no-cache bash curl
+    - bash deploy/ec2/deploy.sh
+  environment: {name: production/oie1}
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+      allow_failure: true
