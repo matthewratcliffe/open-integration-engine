@@ -32,6 +32,7 @@ tag), and `bash`, `curl` and `xmllint` wherever you run the scripts.
 | `compose.sso-killswitch.yaml` | overlay: turn single sign-on off without the console |
 | `compose.cluster.yaml` | overlay: three engines behind one address, sharing deployments |
 | `deploy/k8s/` | the same, as StatefulSets |
+| `deploy/ec2/` | the same, installed on an EC2 instance without Docker, database on RDS |
 | `config/` | channels, code templates, configuration map — the source of truth |
 | `scripts/oie-config-push.sh` | idempotent upsert + deploy, for CI |
 | `scripts/oie-config-pull.sh` | export a running server back into `config/` |

@@ -34,3 +34,6 @@ test/fixtures/channels/sftp-sender-fixture.xml
 **/.terraform/
 *.tfplan
 infra/aws/shared-outputs.json
+
+# EC2 installer bundles (deploy/ec2/package.sh)
+dist/

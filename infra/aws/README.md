@@ -3,7 +3,7 @@
 Terraform deploys one OIE Fargate task per deployment - an environment plus an
 instance. Staging is the single instance `oie` (`au-staging-oie`) and applies on
 the GitLab default branch. Production runs numbered instances - `oie1` at
-`oie1.htrak.com` today, `oie2` and so on later - each a separate engine with its
+`oie.htrak.com` today, `oie2` and so on later - each a separate engine with its
 own service, EFS, database, keystore, secret, state and NLB port range, deployed
 by its own manual job. Each instance's variables are scoped to the GitLab
 environment `production/<instance>`.
@@ -19,7 +19,9 @@ To add a production instance (e.g. `oie2`):
    unused ALB priorities (the plan job lists the listener's rules).
 5. Point DNS for `oie2.htrak.com` at the shared ALB.
 
-The hostname is `<instance>.htrak.com`. The shared ECS, ALB, NLB,
+The hostname is `<instance>.htrak.com`, unless the instance's jobs set
+`OIE_HOSTNAME`: `oie1` is at `oie.htrak.com`, because `oie1.htrak.com` is the
+EC2 instance (`deploy/ec2`). The shared ECS, ALB, NLB,
 VPC, subnets, ECR and RDS values come from the `shared-outputs.json` artifact
 fetched from `infra/awsshardmoduleprod`.
 
@@ -78,7 +80,7 @@ Required GitLab variables:
 
 - `AWS_REGION` (defaults to `ap-southeast-2` if unset)
 - Environment-scoped `AWS_ALB_PRIORITY`; `OIE_STAGING_HOSTNAME` (production
-  hostnames are `<instance>.htrak.com`)
+  hostnames are `<instance>.htrak.com` unless overridden, as `oie1` is)
 - Environment-scoped `AWS_ALB_REDIRECT_PRIORITY`: the shared-listener priority
   of the rule redirecting a bare `/` to `/oie-webadmin/`. It must be lower than
   `AWS_ALB_PRIORITY` and unused by other apps (staging 105, production/oie1 106).
