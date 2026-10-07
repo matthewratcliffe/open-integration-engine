@@ -2,7 +2,8 @@
 #
 # Deploys this commit to the EC2 instance, from GitLab (the deploy-ec2 job):
 #
-#   1. publishes the wildcard certificate to SSM (publish-tls.sh)
+#   1. copies the installer's settings and the wildcard certificate from
+#      GitLab variables into SSM (publish-params.sh)
 #   2. builds the bundle (package.sh) and uploads it to this project's
 #      generic package registry, as oie-ec2/<commit>/oie-ec2.tar.gz
 #   3. has SSM Run Command download it from GitLab on the instance, unpack it
@@ -15,11 +16,11 @@
 # The token does stay in the SSM command's history, expired.
 #
 #   EC2_INSTANCE_NAME    the instance's Name tag (or its i-... id)
-#   EC2_SSM_PATH         the parameter path install.sh reads, e.g. /oie/production
-#   TLS_CERT_PEM, TLS_KEY_PEM   optional: published to EC2_SSM_PATH first
+#   EC2_SSM_PATH         the parameter path install.sh reads, e.g. /oie/production/oie1
+#   the installer's settings    see publish-params.sh for the list
 #
 # The deploy role needs ec2:DescribeInstances, ssm:DescribeInstanceInformation,
-# ssm:PutParameter on <EC2_SSM_PATH>/TLS_*, ssm:SendCommand (AWS-RunShellScript,
+# ssm:PutParameter on <EC2_SSM_PATH>/*, ssm:SendCommand (AWS-RunShellScript,
 # the instance) and ssm:GetCommandInvocation. The instance role needs
 # ssm:GetParametersByPath on EC2_SSM_PATH, and the instance outbound HTTPS to
 # GitLab.
@@ -51,6 +52,11 @@ else
         || die "expected one running instance named ${EC2_INSTANCE_NAME}, found ${#ids[@]}${ids:+: ${ids[*]}}"
     instance="${ids[0]}"
 fi
+
+# The engine's database login on RDS is EC2_INSTANCE_NAME, unless
+# DATABASE_USERNAME says otherwise.
+export DATABASE_USERNAME="${DATABASE_USERNAME:-$EC2_INSTANCE_NAME}"
+log "database user on RDS: ${DATABASE_USERNAME}"
 ping="$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=${instance}" \
     --query 'InstanceInformationList[0].PingStatus' --output text)"
 [[ "$ping" == Online ]] \
@@ -58,13 +64,9 @@ ping="$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=
 log "deploying ${commit} to ${EC2_INSTANCE_NAME} (${instance})"
 
 ########################################################################
-# Certificate, bundle
+# Settings and certificate, bundle
 ########################################################################
-if [[ -n "${TLS_CERT_PEM:-}" ]]; then
-    bash "$HERE/publish-tls.sh"
-else
-    log "TLS_CERT_PEM not set: leaving the certificate in ${EC2_SSM_PATH} as it is"
-fi
+bash "$HERE/publish-params.sh"
 
 bundle="$ROOT/dist/oie-ec2-${commit}.tar.gz"
 bash "$HERE/package.sh" "$bundle"

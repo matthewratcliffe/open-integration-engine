@@ -368,8 +368,9 @@ deploy-aws-production-oie1:
   variables: {DEPLOY_INSTANCE: oie1, OIE_HOSTNAME: oie.htrak.com}
 
 # The EC2 instance running without Docker (deploy/ec2) at oie1.htrak.com.
-# Builds the installer bundle, publishes the *.htrak.com certificate
-# (TLS_CERT_PEM/TLS_KEY_PEM) to SSM, uploads the bundle to this project's
+# Builds the installer bundle, copies the installer's settings and the
+# *.htrak.com certificate (TLS_CERT_PEM/TLS_KEY_PEM) from GitLab variables to
+# SSM, uploads the bundle to this project's
 # package registry and has SSM Run Command download and install it on the
 # instance -- nothing connects to the instance directly. Scoped to
 # production/oie1: EC2_INSTANCE_NAME (the instance's Name tag) and

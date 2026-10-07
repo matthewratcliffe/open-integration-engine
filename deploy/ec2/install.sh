@@ -7,7 +7,7 @@
 # access. The deploy-ec2 GitLab job puts the bundle in /opt/oie/bundle and runs
 # it through SSM (deploy/ec2/deploy.sh); by hand, as root:
 #
-#   OIE_SSM_PATH=/oie/production /opt/oie/bundle/install.sh
+#   OIE_SSM_PATH=/oie/production/oie1 /opt/oie/bundle/install.sh
 #
 # Re-running it is how you change anything: it rewrites /etc/oie/oie.env from
 # the current environment, reinstalls the release only when the bundle's
@@ -124,16 +124,25 @@ fi
 ########################################################################
 # Inputs
 ########################################################################
-: "${OIE_ADMIN_PASSWORD:?set OIE_ADMIN_PASSWORD}"
+# require <name> <what it is> -- says where the value was expected, since it
+# usually comes from a GitLab variable by way of SSM.
+require() {
+    [[ -n "${!1:-}" ]] && return 0
+    if [[ -n "${OIE_SSM_PATH:-}" ]]; then
+        die "$1 is not set ($2). Set it as a GitLab variable in the deploy job's environment -- the deploy copies it to ${OIE_SSM_PATH}/$1 -- or put that SSM parameter in yourself"
+    fi
+    die "$1 is not set ($2)"
+}
+require OIE_ADMIN_PASSWORD "the admin account's password"
 # Guards appdata/keystore.jks, which also holds the data-encryption key.
 # Changing it after first boot makes the keystore unreadable, so there is no
 # default to fall back on by accident.
-: "${KEYSTORE_PASSWORD:?set KEYSTORE_PASSWORD -- and keep it, it cannot change after first boot}"
+require KEYSTORE_PASSWORD "guards the keystore; it cannot change after first boot"
 
 # Either the whole JDBC URL, or the RDS endpoint and a database name.
 POSTGRES_DB="${POSTGRES_DB:-mirthdb}"
 if [[ -z "${DATABASE_URL:-}" ]]; then
-    : "${RDS_ENDPOINT:?set RDS_ENDPOINT (the RDS instance host, optionally :port), or DATABASE_URL}"
+    require RDS_ENDPOINT "the RDS instance host, optionally :port; or set DATABASE_URL"
     [[ "$RDS_ENDPOINT" == *:* ]] || RDS_ENDPOINT="${RDS_ENDPOINT}:5432"
     DATABASE_URL="jdbc:postgresql://${RDS_ENDPOINT}/${POSTGRES_DB}?sslmode=require"
 fi
@@ -145,7 +154,7 @@ DB_NAME="${BASH_REMATCH[4]}"
 # POSTGRES_USER/POSTGRES_PASSWORD are accepted too, as .env spells them.
 DATABASE_USERNAME="${DATABASE_USERNAME:-${POSTGRES_USER:-mirthdb}}"
 DATABASE_PASSWORD="${DATABASE_PASSWORD:-${POSTGRES_PASSWORD:-}}"
-[[ -n "$DATABASE_PASSWORD" ]] || die "set DATABASE_PASSWORD for ${DATABASE_USERNAME}"
+require DATABASE_PASSWORD "the password for the engine's database user, ${DATABASE_USERNAME}"
 
 # The release and plugins are whatever the bundle carries (release.env).
 INCLUDE_ADMIN_CLIENT="${INCLUDE_ADMIN_CLIENT:-true}"
@@ -261,7 +270,7 @@ chown -R engine:engine "$APP_DIR"
 # TLS certificate
 ########################################################################
 # TLS_CERT_PEM/TLS_KEY_PEM are the shared *.htrak.com wildcard, the GitLab
-# variables deploy-ec2 copies into SSM (deploy/ec2/publish-tls.sh). They are PEM, so they
+# variables deploy-ec2 copies into SSM (deploy/ec2/publish-params.sh). They are PEM, so they
 # cannot travel through the environment file; they go to files the start
 # script reads, and it puts them in the keystore as the engine's own cert.
 TLS_DIR=/etc/oie/tls

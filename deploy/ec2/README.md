@@ -11,7 +11,7 @@ variable in `.env.example` means the same thing here. In production it is
 deploy/ec2/deploy.sh       what the deploy-ec2-production-oie1 job runs
 deploy/ec2/package.sh      builds the installer bundle
 deploy/ec2/install.sh      the installer, run on the instance from the bundle
-deploy/ec2/publish-tls.sh  copies the wildcard certificate into SSM
+deploy/ec2/publish-params.sh  copies the settings and certificate from GitLab into SSM
 ```
 
 ## How a deploy reaches the instance
@@ -21,9 +21,10 @@ on a `main` pipeline, signs in to AWS with the existing GitLab deploy role and:
 
 1. looks up the instance by its `Name` tag (`EC2_INSTANCE_NAME`) and checks
    SSM can reach it;
-2. writes `TLS_CERT_PEM`/`TLS_KEY_PEM`, the shared `*.htrak.com` wildcard, to
-   SSM Parameter Store, after checking the key matches and the certificate has
-   not expired;
+2. copies the installer's settings from GitLab variables into SSM Parameter
+   Store under `EC2_SSM_PATH`, and the shared `*.htrak.com` wildcard
+   (`TLS_CERT_PEM`/`TLS_KEY_PEM`) after checking the key matches and the
+   certificate has not expired;
 3. builds the bundle - the installer, the entrypoint, the scripts, the engine
    release and the plugins, each verified against its pinned checksum - and
    uploads it to this project's generic package registry as
@@ -48,14 +49,15 @@ expired.
 
   ```json
   { "Effect": "Allow", "Action": "ssm:GetParametersByPath",
-    "Resource": "arn:aws:ssm:<region>:<account>:parameter/oie/production" }
+    "Resource": ["arn:aws:ssm:<region>:<account>:parameter/oie/production/oie1",
+                 "arn:aws:ssm:<region>:<account>:parameter/oie/production/oie1/*"] }
   ```
 
   and `kms:Decrypt` if the parameters use a customer-managed key.
 - **The CI deploy role** (defined in `infra/awsshardmoduleprod`):
   `ec2:DescribeInstances`, `ssm:DescribeInstanceInformation`,
   `ssm:PutParameter` on
-  `<path>/TLS_*`, `ssm:SendCommand` on the `AWS-RunShellScript` document and
+  `<path>/*`, `ssm:SendCommand` on the `AWS-RunShellScript` document and
   the instance, and `ssm:GetCommandInvocation`.
 - **Package registry space**: each deploy stores a bundle of about 245 MB.
   Delete old `oie-ec2` versions from Deploy > Package registry now and then;
@@ -72,16 +74,19 @@ In GitLab, scoped to the environment `production/oie1`:
 | Variable | |
 | --- | --- |
 | `EC2_INSTANCE_NAME` | the instance's `Name` tag (an `i-...` id also works). Exactly one running instance must match |
-| `EC2_SSM_PATH` | the parameter path the instance reads, e.g. `/oie/production` |
+| `EC2_SSM_PATH` | the parameter path the instance reads, e.g. `/oie/production/oie1`. One per instance: everything beneath it is read |
 
+The installer's settings are GitLab variables too, in the same environment.
+Each deploy copies the ones below into SSM under `EC2_SSM_PATH`, as
+SecureString parameters named after the variable; one not set in GitLab is
+left as it is in SSM, so a parameter put there by hand still works.
 `TLS_CERT_PEM`/`TLS_KEY_PEM` are the existing instance-level variables.
 
-In SSM Parameter Store under `EC2_SSM_PATH`, as SecureString, one parameter
-per variable (`/oie/production/OIE_ADMIN_PASSWORD`, ...). Required:
+Required:
 
 | Variable | |
 | --- | --- |
-| `RDS_ENDPOINT` | the RDS instance's endpoint, `host` or `host:port`. Or give the whole `DATABASE_URL` instead |
+| `RDS_ENDPOINT` | the RDS instance's endpoint, `host` or `host:port`. Defaults to the shared RDS instance in `shared-outputs.json`. Or give the whole `DATABASE_URL` instead |
 | `DATABASE_PASSWORD` | password for the engine's database user |
 | `OIE_ADMIN_PASSWORD` | the `admin` account's password, rotated from 4.6.0's `admin` on first boot |
 | `KEYSTORE_PASSWORD` | guards `appdata/keystore.jks`. **Cannot change after first boot** |
@@ -90,21 +95,24 @@ Optional:
 
 | Variable | |
 | --- | --- |
-| `DATABASE_USERNAME` | default `mirthdb` |
-| `POSTGRES_DB` | database name, default `mirthdb`. Not the database another engine uses |
-| `RDS_MASTER_USERNAME`, `RDS_MASTER_PASSWORD` | when set, the installer creates the user and database on RDS (idempotently). Otherwise both must exist already |
-| `KEYSTORE_BASE64` | a keystore to install when the instance has none, `base64 -w0 keystore.jks`. Recommended: see below |
+| `DATABASE_USERNAME` | the engine's login on RDS. Defaults to `EC2_INSTANCE_NAME` |
+| `POSTGRES_DB` | database name, default `mirthdb`. Not the database another engine uses: `RDS_DATABASE_NAME`, the ECS engine's, is deliberately not copied |
+| `RDS_MASTER_USERNAME`, `RDS_MASTER_PASSWORD` | the installer creates the user and database on RDS with them (idempotently). Default to the shared outputs' credentials, decrypted with `ENCRYPTION_KEY` as the ECS plan does |
+| `KEYSTORE_BASE64` | a keystore to install when the instance has none, `base64 -w0 keystore.jks`. Defaults to `OIE_KEYSTORE_B64`. Recommended: see below |
 | `KEYSTORE_RESET` | set to a new value to deliberately replace the keystore, as on ECS |
 | `OIE_HEAP_MAX` | default `1g` |
 | `HTTPS_PORT` | console and API port, default `8443`. `443` works too |
-| `OIE_EXTENSION_URLS`, `OIE_OIDC_*`, `_MP_*`, ... | anything else from `.env.example` or the entrypoint passes straight through |
+| `OIE_EXTENSION_URLS`, `OIE_UPDATE_CHECK`, `TZ` | as in `.env.example` |
+
+Anything else the entrypoint understands (`OIE_OIDC_*`, `_MP_*`, ...) works as
+an SSM parameter put there by hand; the deploy copies only the names above.
 
 The engine release and plugin list are the ones `docker/Dockerfile` pins, at
 the commit being deployed.
 
 ## Deploying
 
-1. Create the parameters, the roles and the instance.
+1. Set the variables, and create the roles and the instance.
 2. Run `deploy-ec2-production-oie1` on a `main` pipeline. The first deploy
    creates the schema on RDS, which takes a few minutes; it finishes when the
    admin password has been rotated.
