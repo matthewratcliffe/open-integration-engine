@@ -17,6 +17,17 @@ variables:
   DOCKER_HOST: tcp://docker:2375
   DOCKER_TLS_CERTDIR: ""
   DOCKER_DRIVER: overlay2
+  # Only the EC2 deploy runs for now: fetch-shared-outputs and
+  # deploy-ec2-production-oie1. Every other job -- validate, the image build,
+  # ECR, the ECS staging and production deploys, local Kubernetes -- is kept
+  # but switched off by the rule below. Set ECS_PIPELINE to "true" (here, as a
+  # project variable, or when running a pipeline) to bring them all back.
+  ECS_PIPELINE: "false"
+
+# Put first in a job's rules: switches the job off unless ECS_PIPELINE is "true".
+.ecs-pipeline-off: &ecs_pipeline_off
+  if: '$ECS_PIPELINE != "true"'
+  when: never
 
 validate:
   stage: validate
@@ -31,6 +42,7 @@ validate:
     - terraform -chdir="$TF_ROOT" fmt -check -recursive
     - terraform -chdir="$TF_ROOT" init -backend=false
     - terraform -chdir="$TF_ROOT" validate
+  rules: [*ecs_pipeline_off, {when: on_success}]
 
 build-image:
   stage: package
@@ -43,7 +55,7 @@ build-image:
   script:
     - docker build --build-arg "OIE_VERSION=$OIE_VERSION" --build-arg "OIE_SHA256=$OIE_SHA256" -t "$IMAGE_TAG" docker
     - docker push "$IMAGE_TAG"
-  rules: [{if: '$CI_COMMIT_BRANCH'}]
+  rules: [*ecs_pipeline_off, {if: '$CI_COMMIT_BRANCH'}]
 
 fetch-shared-outputs:
   stage: package
@@ -112,7 +124,7 @@ push-ecr:
         docker tag public.ecr.aws/docker/library/postgres:17-alpine "$AWS_ECR_REPOSITORY_URL:postgres-17-alpine"
         docker push "$AWS_ECR_REPOSITORY_URL:postgres-17-alpine"
       fi
-  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
+  rules: [*ecs_pipeline_off, {if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
 
 # Each deployment is an environment + instance: staging runs the single
 # instance "oie"; production runs oie1, oie2, ... as separate engines (see the
@@ -288,7 +300,7 @@ plan-aws-staging:
   stage: staging-plan
   variables: {DEPLOY_ENV: staging, OIE_HOSTNAME: "$OIE_STAGING_HOSTNAME"}
   environment: {name: staging, action: prepare}
-  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
+  rules: [*ecs_pipeline_off, {if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
 
 deploy-aws-staging:
   extends: .terraform-apply
@@ -299,7 +311,7 @@ deploy-aws-staging:
       artifacts: true
   variables: {DEPLOY_ENV: staging}
   environment: {name: staging, url: "https://$OIE_STAGING_HOSTNAME"}
-  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
+  rules: [*ecs_pipeline_off, {if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
 
 deploy-local-k8s:
   stage: staging
@@ -312,7 +324,7 @@ deploy-local-k8s:
     - apk add --no-cache bash kubectl openssl openjdk17-jre-headless
   script: ["bash scripts/oie-deploy-local-k8s.sh"]
   environment: {name: local-k8s}
-  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
+  rules: [*ecs_pipeline_off, {if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
 
 # Production instances. Each is its own engine at <instance>.htrak.com, unless
 # its jobs set OIE_HOSTNAME (oie1 is at oie.htrak.com: oie1.htrak.com is the
@@ -332,7 +344,7 @@ deploy-local-k8s:
       artifacts: true
   variables: {DEPLOY_ENV: production, OIE_HOSTNAME: "$DEPLOY_INSTANCE.htrak.com"}
   environment: {name: production/$DEPLOY_INSTANCE, action: prepare}
-  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
+  rules: [*ecs_pipeline_off, {if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
 
 .deploy-aws-production:
   extends: .terraform-apply
@@ -341,7 +353,7 @@ deploy-local-k8s:
   environment: {name: production/$DEPLOY_INSTANCE, url: "https://$OIE_HOSTNAME"}
   when: manual
   allow_failure: false
-  rules: [{if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
+  rules: [*ecs_pipeline_off, {if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'}]
 
 plan-aws-production-oie1:
   extends: .plan-aws-production
