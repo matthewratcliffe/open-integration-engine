@@ -122,6 +122,27 @@ if [[ -n "${OIE_SSM_PATH:-}" ]]; then
     done < <(jq -j '.Parameters[] | .Name, "\u0000", .Value, "\u0000"' <<<"$params")
 fi
 
+# Single sign-on pinned from GitLab: OIE_OIDC_SETTINGS is a JSON object of
+# OIE_OIDC_* overrides, rewritten whole on every deploy (publish-params.sh).
+# Non-empty, it owns those names, as the ECS task's environment does: one it
+# leaves out is unset, since the extension reads even an empty one as an
+# override. {} pins nothing, and OIE_OIDC_* parameters put in SSM by hand apply.
+OIDC_PINNED=(OIE_OIDC_ENABLED OIE_OIDC_WEB_ADMINISTRATOR_URL OIE_OIDC_DISCOVERY_URL
+    OIE_OIDC_CLIENT_ID OIE_OIDC_CLIENT_SECRET OIE_OIDC_PROVIDER_LABEL
+    OIE_OIDC_USERNAME_CLAIM OIE_OIDC_SCOPES OIE_OIDC_AUTO_REDIRECT)
+if [[ -n "${OIE_OIDC_SETTINGS:-}" ]]; then
+    jq -e 'type == "object" and all(.[]; type == "string")' <<<"$OIE_OIDC_SETTINGS" >/dev/null 2>&1 \
+        || die "OIE_OIDC_SETTINGS is not a JSON object of strings"
+    if [[ "$(jq length <<<"$OIE_OIDC_SETTINGS")" -gt 0 ]]; then
+        unset "${OIDC_PINNED[@]}"
+        while IFS= read -r -d '' name && IFS= read -r -d '' value; do
+            [[ " ${OIDC_PINNED[*]} " == *" ${name} "* ]] || die "OIE_OIDC_SETTINGS holds ${name}, which it does not manage"
+            export "${name}=${value}"
+        done < <(jq -j 'to_entries[] | .key, "\u0000", .value, "\u0000"' <<<"$OIE_OIDC_SETTINGS")
+        log "SSO pinned from GitLab: $(jq -r 'del(.OIE_OIDC_CLIENT_SECRET) | keys | join(" ")' <<<"$OIE_OIDC_SETTINGS")"
+    fi
+fi
+
 ########################################################################
 # Inputs
 ########################################################################
@@ -436,6 +457,7 @@ render_env() {
             OIE_UPDATE_CHECK|OIE_UPDATE_CHECK_EXTENSIONS|OIE_HEAP_MAX|OIE_VERSION|TZ|\
             OIE_ADMIN_PASSWORD|OIE_SSM_PATH|OIE_SHA256|OIE_TARBALL_URL|OIE_BUILTIN_PLUGIN_URLS|\
             OIE_WAIT_TIMEOUT|HTTP_REDIRECT|\
+            OIE_OIDC_SETTINGS|\
             OIE_EXTENSION_URLS)  # bundled instead, see custom-extensions above
                 continue ;;
             OIE_*|_MP_*|KEYSTORE_*|DATABASE*|SESSION_STORE|SERVER_ID|VMOPTIONS|DELAY|*_DOWNLOAD|*_FILE)

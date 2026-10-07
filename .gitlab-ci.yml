@@ -374,12 +374,14 @@ deploy-aws-production-oie1:
 # package registry and has SSM Run Command download and install it on the
 # instance -- nothing connects to the instance directly. Scoped to
 # production/oie1: EC2_INSTANCE_NAME (the instance's Name tag) and
-# EC2_SSM_PATH. See deploy/ec2/README.md.
+# EC2_SSM_PATH. The same OIDC_* variables as the ECS deploy pin SSO here too,
+# with EC2_HOSTNAME's web administrator URL. See deploy/ec2/README.md.
 deploy-ec2-production-oie1:
   extends: .aws-oidc
   stage: production
   image: alpine:3.22
   tags: [docker]
+  variables: {EC2_HOSTNAME: oie1.htrak.com}
   needs:
     - job: fetch-shared-outputs
       artifacts: true

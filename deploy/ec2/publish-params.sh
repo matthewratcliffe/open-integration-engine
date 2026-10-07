@@ -18,6 +18,7 @@
 #   KEYSTORE_BASE64       defaults to OIE_KEYSTORE_B64, the ECS name for it
 #   everything else in SETTINGS below, as the installer names it
 #   TLS_CERT_PEM, TLS_KEY_PEM   the *.htrak.com wildcard, checked first
+#   OIDC_*                the ECS deploy's SSO variables, as OIE_OIDC_SETTINGS
 #
 # Deliberately not copied: RDS_DATABASE_NAME. In production/oie1 that names
 # the ECS engine's database, and two engines must not share one. The EC2
@@ -86,6 +87,57 @@ for name in "${SETTINGS[@]}"; do
 done
 echo "wrote to ${EC2_SSM_PATH}: ${written[*]:-nothing}"
 echo "not set in GitLab, left as they are in SSM: ${skipped[*]:-none}"
+
+########################################################################
+# Single sign-on (docs/sso.md)
+########################################################################
+# The same OIDC_* variables and checks as the ECS deploy (.gitlab-ci.yml),
+# written as one parameter, OIE_OIDC_SETTINGS: a JSON object of the OIE_OIDC_*
+# overrides, which the installer expands. One parameter rewritten on every
+# deploy, so a variable removed in GitLab is gone from the instance too: the
+# extension reads a present-but-empty override as set, and SSM cannot hold an
+# empty value to clear one. OIDC_ENABLED unset writes {}, which pins nothing
+# and leaves SSO to the console. OIDC_AUTO_REDIRECT=true hides the password
+# form but does not disable password login, which stays the break-glass path.
+if [[ -z "${OIDC_ENABLED:-}" ]]; then
+    for v in OIDC_DISCOVERY_URL OIDC_CLIENT_ID OIDC_CLIENT_SECRET OIDC_PROVIDER_LABEL OIDC_USERNAME_CLAIM OIDC_SCOPES OIDC_AUTO_REDIRECT; do
+        [[ -z "${!v:-}" ]] \
+            || { echo "$v is set but OIDC_ENABLED is not - set OIDC_ENABLED=true (or false) to pin SSO from GitLab, or unset $v" >&2; exit 1; }
+    done
+    echo '{}' > "$work/oidc.json"
+    echo "OIDC_ENABLED unset - SSO is configured in the console"
+else
+    case "$OIDC_ENABLED" in true|false) ;; *) echo "OIDC_ENABLED must be true or false, not '$OIDC_ENABLED'" >&2; exit 1 ;; esac
+    case "${OIDC_AUTO_REDIRECT:-}" in
+        ""|false) ;;
+        true) [[ "$OIDC_ENABLED" == true ]] || { echo "OIDC_AUTO_REDIRECT=true needs OIDC_ENABLED=true" >&2; exit 1; } ;;
+        *) echo "OIDC_AUTO_REDIRECT must be true or false, not '$OIDC_AUTO_REDIRECT'" >&2; exit 1 ;;
+    esac
+    if [[ "$OIDC_ENABLED" == true ]]; then
+        for v in OIDC_DISCOVERY_URL OIDC_CLIENT_ID OIDC_CLIENT_SECRET; do
+            [[ -n "${!v:-}" ]] || { echo "OIDC_ENABLED=true needs $v" >&2; exit 1; }
+        done
+    fi
+    : "${EC2_HOSTNAME:?EC2_HOSTNAME is not set -- the host name of the instance, for the web administrator URL}"
+    webadmin="https://${EC2_HOSTNAME}"
+    [[ -z "${HTTPS_PORT:-}" || "$HTTPS_PORT" == 443 ]] || webadmin+=":${HTTPS_PORT}"
+    webadmin+=/oie-webadmin
+    jq -n \
+        --arg enabled "$OIDC_ENABLED" \
+        --arg webadmin "$webadmin" \
+        --arg discovery "${OIDC_DISCOVERY_URL:-}" \
+        --arg client "${OIDC_CLIENT_ID:-}" \
+        --arg secret "${OIDC_CLIENT_SECRET:-}" \
+        --arg label "${OIDC_PROVIDER_LABEL:-}" \
+        --arg claim "${OIDC_USERNAME_CLAIM:-}" \
+        --arg scopes "${OIDC_SCOPES:-}" \
+        --arg redirect "${OIDC_AUTO_REDIRECT:-}" \
+        '{OIE_OIDC_ENABLED: $enabled, OIE_OIDC_WEB_ADMINISTRATOR_URL: $webadmin, OIE_OIDC_DISCOVERY_URL: $discovery, OIE_OIDC_CLIENT_ID: $client, OIE_OIDC_CLIENT_SECRET: $secret, OIE_OIDC_PROVIDER_LABEL: $label, OIE_OIDC_USERNAME_CLAIM: $claim, OIE_OIDC_SCOPES: $scopes, OIE_OIDC_AUTO_REDIRECT: $redirect} | with_entries(select(.value != ""))' \
+        > "$work/oidc.json"
+    echo "SSO pinned from GitLab: $(jq -c 'del(.OIE_OIDC_CLIENT_SECRET)' "$work/oidc.json")${OIDC_CLIENT_SECRET:+ + OIE_OIDC_CLIENT_SECRET}"
+    echo "Register ${webadmin}/oidc/callback as the redirect URI at the provider"
+fi
+put OIE_OIDC_SETTINGS "$work/oidc.json"
 
 ########################################################################
 # The certificate

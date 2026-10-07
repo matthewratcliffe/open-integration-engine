@@ -109,6 +109,24 @@ Optional:
 Anything else the entrypoint understands (`OIE_OIDC_*`, `_MP_*`, ...) works as
 an SSM parameter put there by hand; the deploy copies only the names above.
 
+### Single sign-on
+
+The same `OIDC_*` variables as the ECS deploy (`infra/aws/README.md`,
+`docs/sso.md`), with the same checks. `OIDC_ENABLED` unset leaves SSO to the
+console. Set, the deploy pins the provider settings - `OIDC_ENABLED`,
+`OIDC_DISCOVERY_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, and optionally
+`OIDC_PROVIDER_LABEL`, `OIDC_USERNAME_CLAIM`, `OIDC_SCOPES`,
+`OIDC_AUTO_REDIRECT` - and derives the web administrator URL from
+`EC2_HOSTNAME` (set by the job, `oie1.htrak.com`), so the redirect URI to
+register at the provider is `https://oie1.htrak.com/oie-webadmin/oidc/callback`.
+The job log prints it. It differs from the ECS engine's (`oie.htrak.com`), so a
+shared app registration needs both.
+
+They travel as one SecureString parameter, `OIE_OIDC_SETTINGS`, a JSON object
+of `OIE_OIDC_*` overrides rewritten on every deploy, so a variable removed in
+GitLab is removed from the engine too. While it pins anything, it owns those
+`OIE_OIDC_*` names, and a hand-set parameter for one of them is ignored.
+
 The engine release and plugin list are the ones `docker/Dockerfile` pins, at
 the commit being deployed.
 
