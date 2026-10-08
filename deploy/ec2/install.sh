@@ -758,7 +758,13 @@ if [[ "$ADMIN_PASSWORD_FORCE" == true ]]; then
         (( SECONDS < deadline )) || die "the engine did not come up on 127.0.0.1:${ENGINE_PORT} -- journalctl -u oie"
         sleep 5
     done
-    if admin_login; then
+    # /server/status answers before the engine takes sign-ins: until it does,
+    # the login endpoint says "Server is still starting".
+    until admin_login || [[ "$ADMIN_LOGIN" != *"still starting"* ]]; do
+        (( SECONDS < deadline )) || die "the engine did not start taking sign-ins on 127.0.0.1:${ENGINE_PORT}"
+        sleep 5
+    done
+    if [[ "$ADMIN_LOGIN" == SUCCESS* ]]; then
         log "admin signs in with OIE_ADMIN_PASSWORD"
     else
         log "admin does not sign in with OIE_ADMIN_PASSWORD (the engine says ${ADMIN_LOGIN}): resetting the account (ADMIN_PASSWORD_FORCE)"

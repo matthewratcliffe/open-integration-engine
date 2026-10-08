@@ -57,8 +57,9 @@ else
         || { printf 'could not create the Alert inbox channel (HTTP %s)\n' "$(oie_last_status)" >&2; exit 1; }
     printf 'created the Alert inbox channel\n'
 fi
-# The alert's action reaches only a deployed channel.
-oie_api POST "/channels/${INBOX_ID}/_deploy" >/dev/null \
+# The alert's action reaches only a deployed channel. A deploy can take well
+# over the default minute on a busy engine.
+OIE_TIMEOUT="${OIE_DEPLOY_TIMEOUT:-300}" oie_api POST "/channels/${INBOX_ID}/_deploy" >/dev/null \
     || { printf 'could not deploy the Alert inbox channel (HTTP %s)\n' "$(oie_last_status)" >&2; exit 1; }
 
 oie_api POST /alerts "@${DIR}/connector-errors.xml" >/dev/null \
