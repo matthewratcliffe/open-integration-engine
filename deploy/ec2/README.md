@@ -2,7 +2,7 @@
 
 One engine installed straight onto an EC2 instance as a systemd service, with
 its database on RDS, deployed from GitLab. It runs the same release, the same
-13 built-in plugins and the same `docker/entrypoint.sh` as the image, so every
+14 built-in plugins and the same `docker/entrypoint.sh` as the image, so every
 variable in `.env.example` means the same thing here. In production it is
 `oie1.htrak.com`; the ECS deployment that used that name is at
 `oie.htrak.com`.

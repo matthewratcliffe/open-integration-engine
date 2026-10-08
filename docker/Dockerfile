@@ -29,7 +29,7 @@ ARG OIE_TARBALL_URL=
 # extensions at container STARTUP: that mechanism exists for licensed/optional
 # third-party extensions (Zen SSL, Sentinel, the web administrator, ...) that an
 # operator opts into per-environment and may need to rotate without a rebuild.
-# These 13 plugins are required parts of this stack, not optional add-ons, so
+# These 14 plugins are required parts of this stack, not optional add-ons, so
 # they are fetched once at build time and shipped as part of the immutable
 # pristine copy, exactly like the engine release itself above.
 #
@@ -52,7 +52,8 @@ sha256:c75b651e3ab8ab9c756516a3e308dca3a0e23c5ba6dfc27ab945d2e8c96379a2@https://
 sha256:bd0802f87c57a9dd1dc75677607115360935e5267316b79c38dd022396722a03@https://github.com/matthewratcliffe/oie-fhir-connector/releases/download/v0.2.1/fhir-0.2.1.zip,\
 sha256:39bcbf226344e1397ce9285df048aee65c6630f2a0ba13457b7caa73a6f657b1@https://github.com/matthewratcliffe/oie-cluster/releases/download/v0.1.1/cluster-0.1.1.zip,\
 sha256:00564877079f078ed1da1ba8821811d14c48301320b2fc98d183fea93e0bde62@https://github.com/matthewratcliffe/oie-backup/releases/download/v0.1.1/backup-0.1.1.zip,\
-sha256:9e281c2b1d1140379fa21dd0d83e2224349d38897d5200e6aa3b2c214bc6f1ec@https://github.com/matthewratcliffe/oie-whoami/releases/download/v0.1.0/whoami-0.1.0.zip"
+sha256:9e281c2b1d1140379fa21dd0d83e2224349d38897d5200e6aa3b2c214bc6f1ec@https://github.com/matthewratcliffe/oie-whoami/releases/download/v0.1.0/whoami-0.1.0.zip,\
+sha256:30d893504bd14646c28dc2546ac059e0572b14d5e25f064c057c1b8b9361e2f7@https://github.com/matthewratcliffe/oie-cert-generator/releases/download/v0.1.0/certgen-0.1.0.zip"
 
 # Trim the Administrator client jars (~82MB, only needed if operators launch the
 # Administrator GUI from this server) and the mccommand CLI (~32MB, superseded

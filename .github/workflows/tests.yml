@@ -58,7 +58,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # The 13 first-party plugins (and their Java tests) now live in their
+          # The 14 first-party plugins (and their Java tests) now live in their
           # own repos -- see docker/Dockerfile's OIE_BUILTIN_PLUGIN_URLS -- so
           # plugins/ is normally empty here. Look for any src still under it
           # (or under extensions/, for overlays) and skip cleanly if there is
@@ -180,7 +180,7 @@ jobs:
             --tag oie/engine:${OIE_VERSION} \
             ./docker
 
-      # The 13 first-party plugins (FHIR, SFTP, Null Connector, Random
+      # The 14 first-party plugins (FHIR, SFTP, Null Connector, Random
       # Generator, ...) used to be built from source here; they now live in
       # their own repos and are fetched + baked into extensions.dist/ inside
       # the image build above, via OIE_BUILTIN_PLUGIN_URLS (docker/Dockerfile),

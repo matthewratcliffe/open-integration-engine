@@ -17,7 +17,7 @@
 # What it sets up:
 #   * Java 21
 #   * the engine's role and database on RDS, when given the master credentials
-#   * the release tarball and this stack's 13 first-party plugins, checksum
+#   * the release tarball and this stack's 14 first-party plugins, checksum
 #     verified, in /opt/engine -- the same layout the Docker image has
 #   * docker/entrypoint.sh, unchanged, as the oie systemd service's start
 #     command, so every variable documented in .env.example means the same here

@@ -14,7 +14,7 @@ name: docker-build
 #
 # OIE_VERSION / OIE_SHA256 are the engine release pin -- see docker/Dockerfile.
 # Bump both together; the checksum comes from the release's own sha256sums
-# asset. OIE_BUILTIN_PLUGIN_URLS (this stack's 13 first-party plugins) has its
+# asset. OIE_BUILTIN_PLUGIN_URLS (this stack's 14 first-party plugins) has its
 # own default baked into the Dockerfile and is not overridden here.
 
 on:

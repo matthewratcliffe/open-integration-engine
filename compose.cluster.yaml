@@ -94,10 +94,10 @@ x-cluster-engine: &cluster-engine
     OIE_UPDATE_CHECK: ${OIE_UPDATE_CHECK:-true}
     OIE_UPDATE_CHECK_API_BASE: ${OIE_UPDATE_CHECK_API_BASE:-}
     OIE_UPDATE_CHECK_TOKEN: ${OIE_UPDATE_CHECK_TOKEN:-}
-    # Defaults to this stack's own 13 first-party plugins (baked into the image
+    # Defaults to this stack's own 14 first-party plugins (baked into the image
     # at build time via OIE_BUILTIN_PLUGIN_URLS -- see docker/Dockerfile) plus
     # the community extensions installed via OIE_EXTENSION_URLS.
-    OIE_UPDATE_CHECK_EXTENSIONS: ${OIE_UPDATE_CHECK_EXTENSIONS:-Null Connector Service Plugin=matthewratcliffe/oie-null-connector,Volume Monitor=matthewratcliffe/oie-volume-monitor,Update Check=matthewratcliffe/oie-update-check,SSO User Guard=matthewratcliffe/oie-sso-user-guard,SFTP Connector=matthewratcliffe/oie-sftp-connector,Random Generator Connector=matthewratcliffe/oie-random-generator,Node Monitor=matthewratcliffe/oie-node-monitor,Key Store=matthewratcliffe/oie-key-store,Git Sync=matthewratcliffe/oie-git-sync,FHIR Connector Service Plugin=matthewratcliffe/oie-fhir-connector,Cluster=matthewratcliffe/oie-cluster,Backup=matthewratcliffe/oie-backup,Who Am I=matthewratcliffe/oie-whoami,Sentinel=gibson9583/oie-sentinel,Thread Viewer=gibson9583/engine-thread-viewer,OIDC Authentication=gibson9583/oie-oidc-auth}
+    OIE_UPDATE_CHECK_EXTENSIONS: ${OIE_UPDATE_CHECK_EXTENSIONS:-Null Connector Service Plugin=matthewratcliffe/oie-null-connector,Volume Monitor=matthewratcliffe/oie-volume-monitor,Update Check=matthewratcliffe/oie-update-check,SSO User Guard=matthewratcliffe/oie-sso-user-guard,SFTP Connector=matthewratcliffe/oie-sftp-connector,Random Generator Connector=matthewratcliffe/oie-random-generator,Node Monitor=matthewratcliffe/oie-node-monitor,Key Store=matthewratcliffe/oie-key-store,Git Sync=matthewratcliffe/oie-git-sync,FHIR Connector Service Plugin=matthewratcliffe/oie-fhir-connector,Cluster=matthewratcliffe/oie-cluster,Backup=matthewratcliffe/oie-backup,Who Am I=matthewratcliffe/oie-whoami,Certificate Generator=matthewratcliffe/oie-cert-generator,Sentinel=gibson9583/oie-sentinel,Thread Viewer=gibson9583/engine-thread-viewer,OIDC Authentication=gibson9583/oie-oidc-auth}
     _MP_SERVER_API_XFRAMEOPTIONS: ${API_XFRAME_OPTIONS:-SAMEORIGIN}
     _MP_SERVER_API_CONTENTSECURITYPOLICY: ${API_CSP:-frame-ancestors 'self'}
     OIE_HEAP_MAX: ${OIE_HEAP_MAX:-1g}
