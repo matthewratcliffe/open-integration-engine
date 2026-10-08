@@ -63,8 +63,9 @@ expired.
   Delete old `oie-ec2` versions from Deploy > Package registry now and then;
   the job token cannot delete them itself.
 - **Security groups**: RDS allows 5432 from the instance; the instance allows
-  443 (console and API) and 80 (redirect only) from your admin ranges, plus
-  the ports your channels listen on.
+  443 (console and API, through nginx) and 80 (redirect only) from your admin
+  ranges, plus the ports your channels listen on. Not 8443: the engine listens
+  on loopback only.
 - **DNS**: `oie1.htrak.com` pointing at the instance's Elastic IP.
 
 ## Variables
@@ -101,8 +102,10 @@ Optional:
 | `KEYSTORE_BASE64` | a keystore to install when the instance has none, `base64 -w0 keystore.jks`. Defaults to `OIE_KEYSTORE_B64`. Recommended: see below |
 | `KEYSTORE_RESET` | set to a new value to deliberately replace the keystore, as on ECS |
 | `OIE_HEAP_MAX` | default `1g` |
-| `HTTPS_PORT` | console and API port, default `443` |
-| `HTTP_REDIRECT` | default `true`: nginx on port 80 answers every request with a redirect to HTTPS, and serves nothing else. `false` stops it |
+| `HTTPS_PORT` | the port nginx serves the console and API on, default `443`. The engine itself is on `127.0.0.1:8443` |
+| `HTTP_REDIRECT` | default `true`: nginx on port 80 answers every request with a redirect to HTTPS, and serves nothing else. `false` closes 80 |
+| `WEB_LOCAL_LOGIN` | default `true`. `false` turns off password sign-in on the web administrator, leaving it SSO only. See [Ports and the proxy](#ports-and-the-proxy) |
+| `API_DOCS_REQUIRE_SSO` | default `true`: the API documentation only for a signed-in SSO account. `false` serves it to anyone, as the engine does |
 | `OIE_EXTENSION_URLS` | the community extensions, replacing the whole list. Defaults to ECS's `extension_urls` (`infra/aws/variables.tf`): Web Support, which serves `/oie-webadmin/`, Sentinel, Thread Viewer, TLS Manager and OIDC auth. Bundled at deploy time, not copied to SSM |
 | `OIE_UPDATE_CHECK`, `TZ` | as in `.env.example` |
 
@@ -158,17 +161,46 @@ sudo /opt/oie/bundle/install.sh
 
 It remembers `OIE_SSM_PATH` from the last run.
 
-## Ports
+## Ports and the proxy
 
-The engine serves the console and API itself on 443 with the certificate
-below; the service has `CAP_NET_BIND_SERVICE`, so it still runs as `engine`.
-Port 80 is nginx, configured only to redirect to `https://<host><path>`. The
-engine's own plaintext listener (`HTTP_PORT`) stays off, as in compose: the API
-is HTTPS-only, so a console served over HTTP could not sign in anyway.
+nginx serves the console and API on 443 with the certificate below and proxies
+to the engine, which listens on `127.0.0.1:8443` only, so nothing reaches it
+without passing nginx. A bare `https://oie1.htrak.com/` goes to
+`/oie-webadmin/`, as on ECS. Port 80 only redirects to
+`https://<host><path>`. The engine's own plaintext listener (`HTTP_PORT`) stays
+off, as in compose. Channel listener ports are the engine's own, not proxied.
+
+nginx asks `oie-gate` (`deploy/ec2/oie-gate.py`, a small Python service on
+`127.0.0.1:8441`) about two things first:
+
+- **The API documentation** (`API_DOCS_REQUIRE_SSO=true`): the Swagger UI at
+  `/api/` and its assets, `/api/openapi.json|yaml`, `/apiexamples` and
+  `/javadocs`. It is served only when the browser's engine session belongs to
+  an account bound to the SSO provider (one with the OIDC extension's
+  `oidc.subject` preference). No session redirects to the console to sign in;
+  a local account, `admin` included, gets a 403. The API itself is not gated.
+- **Password sign-in on the web administrator** (`WEB_LOCAL_LOGIN=false`):
+  the console's sign-in goes through the gate, which refuses any that is not
+  the OIDC extension's ticket, and the login card shows why. Set
+  `OIDC_AUTO_REDIRECT=true` too, so the card goes straight to the provider
+  rather than showing a password form that will be refused.
+
+  This turns off a way in, not the accounts: the REST API, the Swing
+  Administrator and the scripts here still sign in with a password, which is
+  the break-glass path when the provider is down. Restricting those means
+  restricting who reaches 443 (the security group). With SSO not pinned on,
+  the installer warns that nobody may be able to sign in to the console.
+
+To make the docs check work on `/apiexamples` and `/javadocs`, nginx widens the
+engine's session cookie from `Path=/api` to `Path=/`. The engine sees nginx's
+address as the client's; the real one is in `X-Forwarded-For` and
+`/var/log/nginx/access.log`.
 
 ## The certificate
 
-On each start, the engine's start script puts the certificate from
+nginx serves the wildcard from `/etc/oie/tls`; without it, a self-signed
+certificate of its own in `/etc/oie/proxy`. On each start, the engine's start
+script also puts the certificate from
 `/etc/oie/tls` into `appdata/keystore.jks` under the alias the engine serves
 (`mirthconnect`), only when it differs from the one already there. Every other
 entry, including the data-encryption key, is left as it is. The previous
@@ -201,7 +233,9 @@ limit, so store it as an Advanced parameter (`--tier Advanced`).
 | `/etc/oie/oie.env` | the rendered environment, root-only |
 | `/etc/oie/tls/` | the certificate and key from SSM, readable by the engine only |
 | `/etc/systemd/system/oie.service` | the service |
-| `/etc/nginx/nginx.conf` | the port 80 redirect, rewritten by each deploy |
+| `/etc/nginx/nginx.conf` | the proxy and the port 80 redirect, rewritten by each deploy |
+| `/etc/systemd/system/oie-gate.service` | the proxy's gate; `journalctl -u oie-gate` logs refused sign-ins |
+| `/var/log/nginx/` | the proxy's access and error logs |
 | `journalctl -u oie -f` | startup and the entrypoint's output |
 | `/opt/engine/logs/mirth.log` | the engine's own log |
 | `/var/log/oie-install.log` | every deploy's full output |

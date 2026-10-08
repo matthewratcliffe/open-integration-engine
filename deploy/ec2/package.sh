@@ -8,6 +8,7 @@
 #
 #   oie-ec2/
 #     install.sh
+#     oie-gate.py          the proxy gate install.sh runs beside nginx
 #     release.env          version, plugin list and defaults, from this commit
 #     entrypoint.sh        docker/entrypoint.sh, unchanged
 #     scripts/             scripts/*.sh (the admin bootstrap and its helpers)
@@ -96,6 +97,7 @@ fetch_list "$OIE_BUILTIN_PLUGIN_URLS" "$bundle/payload/plugins"
 (cd "$bundle/payload" && find . -type f ! -name SHA256SUMS | sort | xargs sha256sum > SHA256SUMS)
 
 cp "${ROOT}/deploy/ec2/install.sh" "$bundle/install.sh"
+cp "${ROOT}/deploy/ec2/oie-gate.py" "$bundle/oie-gate.py"
 cp "${ROOT}/docker/entrypoint.sh" "$bundle/entrypoint.sh"
 cp "${ROOT}"/scripts/*.sh "$bundle/scripts/"
 find "${ROOT}/extensions" -mindepth 1 -maxdepth 1 ! -name README.md -exec cp -R {} "$bundle/extensions/" \;

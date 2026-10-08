@@ -21,7 +21,9 @@
 #     verified, in /opt/engine -- the same layout the Docker image has
 #   * docker/entrypoint.sh, unchanged, as the oie systemd service's start
 #     command, so every variable documented in .env.example means the same here
-#   * the console and API on 443, and nginx on 80 redirecting to it
+#   * nginx on 443 in front of the engine, which listens on loopback only, and
+#     on 80 redirecting to it; with oie-gate.py beside it, the API docs for SSO
+#     accounts only and, optionally, no password sign-in on the web console
 #   * the admin password rotation that the compose `bootstrap` service does
 #
 # Configuration comes from SSM: set OIE_SSM_PATH and every SSM parameter
@@ -178,12 +180,24 @@ DATABASE_USERNAME="${DATABASE_USERNAME:-${POSTGRES_USER:-mirthdb}}"
 DATABASE_PASSWORD="${DATABASE_PASSWORD:-${POSTGRES_PASSWORD:-}}"
 require DATABASE_PASSWORD "the password for the engine's database user, ${DATABASE_USERNAME}"
 
-# The console and API on the standard port, and port 80 only redirecting to
-# it -- not the engine's own plaintext listener (HTTP_PORT), which stays off.
+# nginx serves the console and API on HTTPS_PORT and proxies to the engine,
+# which listens on loopback only (ENGINE_PORT), so nothing reaches it without
+# passing the proxy. Port 80 only redirects -- not the engine's own plaintext
+# listener (HTTP_PORT), which stays off.
 HTTPS_PORT="${HTTPS_PORT:-443}"
+ENGINE_PORT=8443
+GATE_PORT=8441
 HTTP_REDIRECT="${HTTP_REDIRECT:-true}"
-[[ "$HTTPS_PORT" =~ ^[0-9]+$ && "$HTTPS_PORT" != 80 ]] \
-    || die "HTTPS_PORT must be a port number other than 80, not ${HTTPS_PORT}"
+# Password sign-in on the web administrator; false leaves it SSO only.
+WEB_LOCAL_LOGIN="${WEB_LOCAL_LOGIN:-true}"
+# The API documentation (Swagger UI, the OpenAPI spec, javadocs) only for a
+# signed-in SSO account; false serves it to anyone, as the engine does.
+API_DOCS_REQUIRE_SSO="${API_DOCS_REQUIRE_SSO:-true}"
+[[ "$HTTPS_PORT" =~ ^[0-9]+$ ]] && ! [[ " 80 ${ENGINE_PORT} ${GATE_PORT} " == *" ${HTTPS_PORT} "* ]] \
+    || die "HTTPS_PORT must be a port number other than 80, ${ENGINE_PORT} and ${GATE_PORT}, not ${HTTPS_PORT}"
+for flag in HTTP_REDIRECT WEB_LOCAL_LOGIN API_DOCS_REQUIRE_SSO; do
+    [[ "${!flag}" == true || "${!flag}" == false ]] || die "${flag} must be true or false, not ${!flag}"
+done
 if [[ "$HTTP_REDIRECT" == true && "${HTTP_PORT:-0}" == 80 ]]; then
     die "HTTP_PORT=80 puts the engine's plaintext listener where the HTTPS redirect goes: set HTTP_REDIRECT=false too, or leave HTTP_PORT off"
 fi
@@ -433,7 +447,8 @@ render_env() {
     env_line KEYSTORE_KEYPASS "$KEYSTORE_PASSWORD"
     env_line _MP_SERVER_INITIALADMINPASSWORD "$OIE_ADMIN_PASSWORD"
     env_line HTTP_PORT "${HTTP_PORT:-0}"
-    env_line HTTPS_PORT "$HTTPS_PORT"
+    env_line HTTPS_PORT "$ENGINE_PORT"
+    env_line _MP_HTTPS_HOST 127.0.0.1
     env_line _MP_SERVER_API_XFRAMEOPTIONS "${API_XFRAME_OPTIONS:-SAMEORIGIN}"
     env_line _MP_SERVER_API_CONTENTSECURITYPOLICY "${API_CSP:-frame-ancestors 'self'}"
     env_line OIE_UPDATE_CHECK "${OIE_UPDATE_CHECK:-true}"
@@ -456,7 +471,7 @@ render_env() {
             _MP_SERVER_API_XFRAMEOPTIONS|_MP_SERVER_API_CONTENTSECURITYPOLICY|HTTP_PORT|HTTPS_PORT|\
             OIE_UPDATE_CHECK|OIE_UPDATE_CHECK_EXTENSIONS|OIE_HEAP_MAX|OIE_VERSION|TZ|\
             OIE_ADMIN_PASSWORD|OIE_SSM_PATH|OIE_SHA256|OIE_TARBALL_URL|OIE_BUILTIN_PLUGIN_URLS|\
-            OIE_WAIT_TIMEOUT|HTTP_REDIRECT|\
+            OIE_WAIT_TIMEOUT|HTTP_REDIRECT|_MP_HTTPS_HOST|\
             OIE_OIDC_SETTINGS|\
             OIE_EXTENSION_URLS)  # bundled instead, see custom-extensions above
                 continue ;;
@@ -502,43 +517,190 @@ systemctl restart oie
 log "oie.service started -- journalctl -u oie -f to follow it"
 
 ########################################################################
-# Port 80: a redirect to HTTPS, nothing else
+# The HTTPS proxy: nginx on HTTPS_PORT and 80, and its gate
 ########################################################################
-# nginx with a config of its own, replacing the distribution's, so neither
-# Amazon Linux's built-in server block nor Ubuntu's default site is served.
-NGINX_CONF=/etc/nginx/nginx.conf
-NGINX_MARK="# Written by the OIE installer (deploy/ec2/install.sh)"
+# nginx terminates TLS and proxies everything to the engine on loopback. Two
+# things it asks oie-gate (deploy/ec2/oie-gate.py) about first:
+#   * the API documentation, with API_DOCS_REQUIRE_SSO=true: served only to an
+#     engine session whose account is bound to the SSO provider
+#   * the web administrator's sign-in, with WEB_LOCAL_LOGIN=false: only the
+#     SSO ticket gets through; the REST API and the Swing Administrator keep
+#     password sign-in, the break-glass path
+# Its config replaces the distribution's whole, so neither Amazon Linux's
+# built-in server block nor Ubuntu's default site is served.
+command -v nginx >/dev/null || pkg_install nginx
+command -v python3 >/dev/null || pkg_install python3
+
+# The wildcard from SSM; without it, a self-signed certificate of the proxy's
+# own, made once.
+if [[ -s "$TLS_DIR/cert.pem" && -s "$TLS_DIR/key.pem" ]]; then
+    proxy_cert="$TLS_DIR/cert.pem" proxy_key="$TLS_DIR/key.pem"
+else
+    proxy_cert=/etc/oie/proxy/selfsigned.pem proxy_key=/etc/oie/proxy/selfsigned.key
+    if [[ ! -s "$proxy_cert" || ! -s "$proxy_key" ]]; then
+        install -d -m 0700 /etc/oie/proxy
+        openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=$(hostname -f 2>/dev/null || hostname)" \
+            -keyout "$proxy_key" -out "$proxy_cert" 2>/dev/null \
+            || die "could not make a self-signed certificate for nginx"
+    fi
+    log "TLS_CERT_PEM not set: nginx serves a self-signed certificate"
+fi
+
+GATE_UNIT=/etc/systemd/system/oie-gate.service
+if [[ "$WEB_LOCAL_LOGIN" == false || "$API_DOCS_REQUIRE_SSO" == true ]]; then
+    install -D -m 0755 "$HERE/oie-gate.py" /usr/local/libexec/oie/oie-gate
+    cat > "$GATE_UNIT" <<EOF
+[Unit]
+Description=OIE proxy gate (deploy/ec2/oie-gate.py)
+After=network.target
+
+[Service]
+ExecStart=$(command -v python3) /usr/local/libexec/oie/oie-gate
+Environment=OIE_GATE_LISTEN=127.0.0.1:${GATE_PORT}
+Environment=OIE_ENGINE_URL=https://127.0.0.1:${ENGINE_PORT}
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable oie-gate >/dev/null
+    systemctl restart oie-gate
+elif [[ -e "$GATE_UNIT" ]]; then
+    systemctl disable --now oie-gate >/dev/null 2>&1 || true
+fi
+
+if [[ "$WEB_LOCAL_LOGIN" == false && "${OIE_OIDC_ENABLED:-}" != true ]]; then
+    log "WARNING: WEB_LOCAL_LOGIN=false but SSO is not pinned on (OIDC_ENABLED=true): unless it is configured in the console, nobody can sign in to the web administrator"
+fi
+
+engine_upstream="https://127.0.0.1:${ENGINE_PORT}"
+docs_locations=""
+if [[ "$API_DOCS_REQUIRE_SSO" == true ]]; then
+    # Swagger UI and its assets, the OpenAPI spec, the examples it fetches and
+    # the javadocs: every path the engine serves documentation on, and no API
+    # resource (MirthWebServer: public_api_html at /api, openapi.* there).
+    docs_locations="$(cat <<EOF
+
+        # API documentation: SSO accounts only (oie-gate /docs). No session
+        # goes to the sign-in page; a local account's gets a 403.
+        location ~ ^/api(/|/index\.html|/(css|fonts|images|lang|lib)/.*|/openapi\.(json|yaml))?\$ {
+            auth_request /_gate/docs;
+            error_page 401 = @signin;
+            error_page 403 = @sso_required;
+            proxy_pass ${engine_upstream};
+        }
+        location ~ ^/(apiexamples|javadocs)(/.*)?\$ {
+            auth_request /_gate/docs;
+            error_page 401 = @signin;
+            error_page 403 = @sso_required;
+            proxy_pass ${engine_upstream};
+        }
+        location = /_gate/docs {
+            internal;
+            proxy_pass http://127.0.0.1:${GATE_PORT}/docs;
+            proxy_pass_request_body off;
+            proxy_set_header Content-Length "";
+        }
+        location @signin {
+            return 302 /oie-webadmin/;
+        }
+        location @sso_required {
+            default_type text/plain;
+            return 403 "The API documentation is for SSO accounts. Sign in to the web administrator with SSO, then reload this page.\n";
+        }
+EOF
+)"
+fi
+login_location=""
+if [[ "$WEB_LOCAL_LOGIN" == false ]]; then
+    login_location="$(cat <<EOF
+
+        # Sign-in goes through oie-gate, which turns away the web
+        # administrator's password sign-in and forwards the rest.
+        location = /api/users/_login {
+            proxy_pass http://127.0.0.1:${GATE_PORT};
+        }
+EOF
+)"
+fi
+redirect_server=""
 if [[ "$HTTP_REDIRECT" == true ]]; then
-    command -v nginx >/dev/null || pkg_install nginx
-    if [[ $PKG == dnf ]]; then nginx_user=nginx; else nginx_user=www-data; fi
     if [[ "$HTTPS_PORT" == 443 ]]; then https_authority='$host'; else https_authority="\$host:${HTTPS_PORT}"; fi
-    cat > "${NGINX_CONF}.new" <<EOF
-${NGINX_MARK}; re-running it rewrites this file.
-user ${nginx_user};
-pid /run/nginx.pid;
-worker_processes 1;
-error_log /var/log/nginx/error.log warn;
+    redirect_server="$(cat <<EOF
 
-events { worker_connections 256; }
-
-http {
-    access_log off;
-    server_tokens off;
+    # Port 80 only redirects.
     server {
         listen 80 default_server;
         return 301 https://${https_authority}\$request_uri;
     }
+EOF
+)"
+fi
+
+NGINX_CONF=/etc/nginx/nginx.conf
+if [[ $PKG == dnf ]]; then nginx_user=nginx; else nginx_user=www-data; fi
+cat > "${NGINX_CONF}.new" <<EOF
+# Written by the OIE installer (deploy/ec2/install.sh); re-running it rewrites this file.
+user ${nginx_user};
+pid /run/nginx.pid;
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+
+events { worker_connections 1024; }
+
+http {
+    server_tokens off;
+    access_log /var/log/nginx/access.log;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:SSL:10m;
+${redirect_server}
+
+    server {
+        listen ${HTTPS_PORT} ssl default_server;
+        ssl_certificate ${proxy_cert};
+        ssl_certificate_key ${proxy_key};
+
+        # Channel and configuration imports, message exports and deploys can be
+        # large and slow; the engine has its own limits.
+        client_max_body_size 0;
+        proxy_request_buffering off;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        # The engine scopes its session cookie to /api; widen it so the browser
+        # also sends it to /apiexamples and /javadocs, which the docs check needs.
+        proxy_cookie_path ~^/api\$ /;
+
+        # A bare https://host/ goes to the web console, as on ECS.
+        location = / {
+            return 302 /oie-webadmin/;
+        }
+${docs_locations}
+${login_location}
+
+        location / {
+            proxy_pass ${engine_upstream};
+        }
+    }
 }
 EOF
-    nginx -t -q -c "${NGINX_CONF}.new" || die "the generated nginx config does not load"
-    mv "${NGINX_CONF}.new" "$NGINX_CONF"
-    systemctl enable nginx >/dev/null
-    systemctl restart nginx
-    log "port 80 redirects to https on ${HTTPS_PORT}"
-elif grep -qF "$NGINX_MARK" "$NGINX_CONF" 2>/dev/null; then
-    systemctl disable --now nginx >/dev/null 2>&1 || true
-    log "HTTP_REDIRECT=false: stopped the port 80 redirect"
-fi
+nginx -t -q -c "${NGINX_CONF}.new" || die "the generated nginx config does not load"
+mv "${NGINX_CONF}.new" "$NGINX_CONF"
+systemctl enable nginx >/dev/null
+systemctl restart nginx
+log "nginx: https on ${HTTPS_PORT} to the engine on 127.0.0.1:${ENGINE_PORT}; web password sign-in $([[ "$WEB_LOCAL_LOGIN" == true ]] && echo on || echo off), API docs $([[ "$API_DOCS_REQUIRE_SSO" == true ]] && echo 'SSO only' || echo public), port 80 $([[ "$HTTP_REDIRECT" == true ]] && echo redirects || echo closed)"
 
 ########################################################################
 # Admin password
@@ -546,7 +708,7 @@ fi
 # Same job as the compose `bootstrap` service: 4.6.0 seeds admin/admin, so
 # rotate it before anyone else finds the port. Idempotent. The first boot
 # creates the schema on RDS, which takes a few minutes.
-OIE_URL="https://127.0.0.1:${HTTPS_PORT}/api" OIE_INSECURE=true \
+OIE_URL="https://127.0.0.1:${ENGINE_PORT}/api" OIE_INSECURE=true \
     OIE_ADMIN_PASSWORD="$OIE_ADMIN_PASSWORD" OIE_WAIT_TIMEOUT="${OIE_WAIT_TIMEOUT:-600}" \
     "$SCRIPTS_DIR/oie-bootstrap-admin.sh"
 

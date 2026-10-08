@@ -126,7 +126,10 @@ permissions and their place on the card — which is the property that matters w
 identity provider is down and the emergency admin account is all you have. Turning on
 *Auto-redirect* sends the browser straight to Entra instead of showing the card at all;
 leave it off until SSO is proven on the deployment, and note that even then the card
-remains reachable.
+remains reachable. The EC2 deployment can go further: `WEB_LOCAL_LOGIN=false` has its proxy
+refuse password sign-in from the web administrator, while the REST API and the Swing
+Administrator keep it as the break-glass path (`deploy/ec2/README.md`). It can also keep the
+API documentation for SSO accounts (`API_DOCS_REQUIRE_SSO`, on by default there).
 
 ### Roles
 
