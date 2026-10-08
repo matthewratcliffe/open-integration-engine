@@ -89,7 +89,7 @@ Required:
 | --- | --- |
 | `RDS_ENDPOINT` | the RDS instance's endpoint, `host` or `host:port`. Defaults to the shared RDS instance in `shared-outputs.json`. Or give the whole `DATABASE_URL` instead |
 | `DATABASE_PASSWORD` | password for the engine's database user |
-| `OIE_ADMIN_PASSWORD` | the `admin` account's password, rotated from 4.6.0's `admin` on first boot |
+| `OIE_ADMIN_PASSWORD` | the `admin` account's password, rotated from 4.6.0's `admin` on first boot and enforced on every deploy (see `ADMIN_PASSWORD_FORCE`) |
 | `KEYSTORE_PASSWORD` | guards `appdata/keystore.jks`. **Cannot change after first boot** |
 
 Optional:
@@ -102,6 +102,7 @@ Optional:
 | `KEYSTORE_BASE64` | a keystore to install when the instance has none, `base64 -w0 keystore.jks`. Defaults to `OIE_KEYSTORE_B64`. Recommended: see below |
 | `KEYSTORE_RESET` | set to a new value to deliberately replace the keystore, as on ECS |
 | `OIE_HEAP_MAX` | default `1g` |
+| `ADMIN_PASSWORD_FORCE` | default `true`: when `OIE_ADMIN_PASSWORD` does not sign in as `admin`, the deploy resets the account in the database -- removes its SSO binding, clears its lockout and makes `OIE_ADMIN_PASSWORD` its password -- then proves it signs in. So `admin` stays the break-glass account whatever was done to it in the console. An SSO identity mapped to `admin` under Linked accounts re-binds it on its next sign-in; remove that mapping. `false` leaves the account alone, and a deploy that cannot sign in fails |
 | `HTTPS_PORT` | the port nginx serves the console and API on, default `443`. The engine itself is on `127.0.0.1:8443` |
 | `HTTP_REDIRECT` | default `true`: nginx on port 80 answers every request with a redirect to HTTPS, and serves nothing else. `false` closes 80 |
 | `WEB_LOCAL_LOGIN` | default `true`. `false` turns off password sign-in on the web administrator, leaving it SSO only. See [Ports and the proxy](#ports-and-the-proxy) |

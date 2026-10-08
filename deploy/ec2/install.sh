@@ -705,6 +705,67 @@ log "nginx: https on ${HTTPS_PORT} to the engine on 127.0.0.1:${ENGINE_PORT}; we
 ########################################################################
 # Admin password
 ########################################################################
+# ADMIN_PASSWORD_FORCE (default true): admin's password is OIE_ADMIN_PASSWORD
+# after every deploy, whatever was done to the account in the console. When
+# the configured password does not sign in, the account is reset in the
+# database -- its SSO binding removed (the OIDC extension refuses a password
+# for an SSO-bound account), its lockout cleared and OIE_ADMIN_PASSWORD made its
+# current password -- and signed in once more to prove it.
+#
+# The password goes in in the engine's pre-2.2 format, SALT_ + base64(8-byte
+# salt) + base64(sha1(salt + password)): the one format it accepts that can be
+# made without its Java digester, and it re-digests it into the current format
+# on that first sign-in (DefaultUserController.authorizeUser).
+ADMIN_PASSWORD_FORCE="${ADMIN_PASSWORD_FORCE:-true}"
+[[ "$ADMIN_PASSWORD_FORCE" == true || "$ADMIN_PASSWORD_FORCE" == false ]] \
+    || die "ADMIN_PASSWORD_FORCE must be true or false, not ${ADMIN_PASSWORD_FORCE}"
+
+# admin_signs_in -- true when OIE_ADMIN_PASSWORD signs in as admin. The
+# credential goes to curl on stdin, not its command line.
+admin_signs_in() {
+    local pass="${OIE_ADMIN_PASSWORD//\\/\\\\}"
+    printf 'user = "admin:%s"\n' "${pass//\"/\\\"}" \
+        | curl -K - -sk -o /dev/null -w '%{http_code}' --max-time 15 \
+            -H 'X-Requested-With: oie-install' "https://127.0.0.1:${ENGINE_PORT}/api/users/current" \
+        | grep -qx 200
+}
+
+if [[ "$ADMIN_PASSWORD_FORCE" == true ]]; then
+    deadline=$(( SECONDS + ${OIE_WAIT_TIMEOUT:-600} ))
+    until curl -sk -o /dev/null --max-time 10 --fail -H 'X-Requested-With: oie-install' \
+            "https://127.0.0.1:${ENGINE_PORT}/api/server/status"; do
+        (( SECONDS < deadline )) || die "the engine did not come up on 127.0.0.1:${ENGINE_PORT} -- journalctl -u oie"
+        sleep 5
+    done
+    if admin_signs_in; then
+        log "admin signs in with OIE_ADMIN_PASSWORD"
+    else
+        log "admin does not sign in with OIE_ADMIN_PASSWORD: resetting the account (ADMIN_PASSWORD_FORCE)"
+        salt_file="$(mktemp)"
+        openssl rand -out "$salt_file" 8
+        digest="SALT_$(base64 -w0 "$salt_file")$({ cat "$salt_file"; printf '%s' "$OIE_ADMIN_PASSWORD"; } \
+            | openssl dgst -sha1 -binary | base64 -w0)"
+        rm -f "$salt_file"
+        reset_out="$(PGHOST="$DB_HOST" PGPORT="$DB_PORT" PGDATABASE="$DB_NAME" PGSSLMODE=require \
+            PGUSER="$DATABASE_USERNAME" PGPASSWORD="$DATABASE_PASSWORD" PGCONNECT_TIMEOUT=15 \
+            psql -v ON_ERROR_STOP=1 -qtA -v digest="$digest" <<'SQL'
+BEGIN;
+SELECT id AS admin_id FROM person WHERE lower(username) = 'admin' \gset
+SELECT 'unbound from SSO' FROM person_preference WHERE person_id = :admin_id AND name = 'oidc.subject';
+DELETE FROM person_preference WHERE person_id = :admin_id AND name = 'oidc.subject';
+SELECT 'lockout cleared' FROM person WHERE id = :admin_id AND coalesce(strike_count, 0) > 0;
+UPDATE person SET strike_count = 0, last_strike_time = NULL, grace_period_start = NULL WHERE id = :admin_id;
+INSERT INTO person_password (person_id, password, password_date) VALUES (:admin_id, :'digest', now());
+COMMIT;
+SQL
+)" || die "could not reset admin in ${DB_NAME} -- is there an admin account?"
+        unset digest
+        [[ -z "$reset_out" ]] || log "admin: $(printf '%s' "$reset_out" | paste -sd, - | sed 's/,/, /g')"
+        admin_signs_in || die "admin still does not sign in after the reset -- see /opt/engine/logs/mirth.log"
+        log "admin reset: it signs in with OIE_ADMIN_PASSWORD again"
+    fi
+fi
+
 # Same job as the compose `bootstrap` service: 4.6.0 seeds admin/admin, so
 # rotate it before anyone else finds the port. Idempotent. The first boot
 # creates the schema on RDS, which takes a few minutes.
