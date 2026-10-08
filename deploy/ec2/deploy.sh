@@ -81,10 +81,17 @@ log "uploaded ${package_url}"
 ########################################################################
 # AWS-RunShellScript runs its commands with sh, so the work is a bash script
 # fed in on stdin. Values are quoted with %q as they go in.
+#
+# Besides /var/log/oie-install.log, which keeps every deploy, this one's output
+# goes to a file of its own, so the job can follow it while the install runs:
+# Run Command only returns a command's output when it ends.
+run_log="/var/log/oie-deploy/${CI_JOB_ID:-$(date +%s)}.log"
 remote="$(cat <<EOF
 bash -s <<'OIE_DEPLOY'
 set -euo pipefail
-exec > >(tee -a /var/log/oie-install.log) 2>&1
+mkdir -p /var/log/oie-deploy
+find /var/log/oie-deploy -name '*.log' -mtime +14 -delete 2>/dev/null || true
+exec > >(tee -a /var/log/oie-install.log $(printf '%q' "$run_log")) 2>&1
 echo "=== \$(date -u '+%Y-%m-%d %H:%M:%S') deploy of ${commit}"
 export AWS_REGION=$(printf '%q' "$AWS_REGION")
 # The minimal AL2023 image has no tar; the standard one does.
@@ -116,22 +123,69 @@ jq -n --arg id "$instance" --arg script "$remote" --arg comment "OIE ${commit:0:
 }' > "$work/command.json"
 command_id="$(aws ssm send-command --cli-input-json "file://$work/command.json" \
     --query Command.CommandId --output text)"
-log "SSM command ${command_id} sent; waiting for the install"
+log "SSM command ${command_id} sent; following the install"
+
+# progress -- prints the install's new lines: a short Run Command reads the
+# deploy's own log on the instance from the first line not yet shown. Only
+# whole lines count, so one still being written comes whole next time. Needs
+# nothing beyond the ssm:SendCommand and ssm:GetCommandInvocation the deploy
+# already has. Returns non-zero when it could not read.
+shown=0 followed=false
+progress() {
+    local id result=""
+    jq -n --arg id "$instance" --arg file "$run_log" --argjson from $((shown + 1)) '{
+        DocumentName: "AWS-RunShellScript",
+        InstanceIds: [$id],
+        Comment: "OIE deploy progress",
+        Parameters: {commands: ["tail -n +\($from) \($file) 2>/dev/null | head -n 400 | head -c 20000"],
+                     executionTimeout: ["60"]}
+    }' > "$work/progress.json"
+    id="$(aws ssm send-command --cli-input-json "file://$work/progress.json" \
+        --query Command.CommandId --output text 2>/dev/null)" || return 1
+    for _ in $(seq 1 30); do
+        sleep 1
+        result="$(aws ssm get-command-invocation --command-id "$id" --instance-id "$instance" \
+            --output json 2>/dev/null)" || continue
+        case "$(jq -r .Status <<<"$result")" in
+            Success) break ;;
+            Pending|InProgress|Delayed) result="" ;;
+            *) return 1 ;;
+        esac
+    done
+    [[ -n "$result" ]] || return 1
+    jq -j '.StandardOutputContent // ""' <<<"$result" > "$work/chunk"
+    local lines
+    lines="$(wc -l < "$work/chunk")"
+    if (( lines > 0 )); then
+        head -n "$lines" "$work/chunk"
+        shown=$(( shown + lines ))
+    fi
+    followed=true
+}
 
 status=Pending
-for _ in $(seq 1 220); do
+deadline=$(( SECONDS + 2100 ))
+while (( SECONDS < deadline )); do
     status="$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance" \
         --query Status --output text 2>/dev/null || echo Pending)"
     case "$status" in
-        Pending|InProgress|Delayed) sleep 10 ;;
+        Pending|InProgress|Delayed) progress || sleep 5; sleep 5 ;;
         *) break ;;
     esac
 done
+# What was written after the last look.
+for _ in 1 2 3; do
+    before=$shown
+    progress || break
+    (( shown > before )) || break
+done
 
-# SSM keeps the first 24,000 characters of each stream; the whole log is in
-# /var/log/oie-install.log on the instance.
-aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance" \
-    --query StandardOutputContent --output text || true
+if [[ "$followed" != true ]]; then
+    # Could not follow it: show what Run Command kept, the first 24,000
+    # characters; the whole log is in /var/log/oie-install.log on the instance.
+    aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance" \
+        --query StandardOutputContent --output text || true
+fi
 errors="$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance" \
     --query StandardErrorContent --output text 2>/dev/null || true)"
 [[ -z "$errors" || "$errors" == None ]] || printf '%s\n' "$errors" >&2

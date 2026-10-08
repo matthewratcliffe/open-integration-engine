@@ -817,8 +817,9 @@ if [[ "$ADMIN_PASSWORD_FORCE" == true ]]; then
         sleep 5
     done
     # /server/status answers before the engine takes sign-ins: until it does,
-    # the login endpoint says "Server is still starting".
-    until admin_login || [[ "$ADMIN_LOGIN" != *"still starting"* ]]; do
+    # the login endpoint says "Server is still starting", or nothing at all.
+    until admin_login || [[ -n "${ADMIN_LOGIN//[?:[:space:]]/}" && "$ADMIN_LOGIN" != *"still starting"* \
+            && "$ADMIN_LOGIN" != "?: no message" ]]; do
         (( SECONDS < deadline )) || die "the engine did not start taking sign-ins on 127.0.0.1:${ENGINE_PORT}"
         sleep 5
     done
