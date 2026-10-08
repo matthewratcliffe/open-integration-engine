@@ -235,6 +235,14 @@ nginx asks `oie-gate` (`deploy/ec2/oie-gate.py`, a small Python service on
   restricting who reaches 443 (the security group). With SSO not pinned on,
   the installer warns that nobody may be able to sign in to the console.
 
+- **TLS Manager** (`/tls-manager/`): its page has its own sign-in form and
+  only trusts that form, so a console session -- an SSO one above all -- met it
+  anyway. nginx adds a script to the page that asks the engine first: with a
+  session it lets TLS Manager in, without one it sends the browser to the
+  console to sign in. With `WEB_LOCAL_LOGIN=false` the gate refuses its
+  password form too: it treats any sign-in carrying a browser's `Sec-Fetch-*`
+  or `Origin` headers as a web sign-in, not only the console's.
+
 To make the docs check work on `/apiexamples` and `/javadocs`, nginx widens the
 engine's session cookie from `Path=/api` to `Path=/`. The engine sees nginx's
 address as the client's; the real one is in `X-Forwarded-For` and

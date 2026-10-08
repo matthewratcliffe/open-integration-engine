@@ -646,6 +646,42 @@ EOF
 )"
 fi
 
+# Runs in TLS Manager's page before the app (the /tls-manager/ location below).
+TLS_MANAGER_SESSION_JS=/usr/local/share/oie/tls-manager-session.js
+install -d -m 0755 "$(dirname "$TLS_MANAGER_SESSION_JS")"
+cat > "$TLS_MANAGER_SESSION_JS" <<'EOF'
+// Added to TLS Manager's page by the OIE proxy (deploy/ec2/install.sh).
+// TLS Manager decides it is signed in from its own localStorage flag, which
+// only its password form sets, so a console session -- SSO above all -- met
+// that form anyway. Its API calls already carry the console's session cookie,
+// so this asks the engine whether there is a session before the app starts:
+// one there sets the flag (and leaves the login page); none sends the browser
+// to the console, where SSO sign-in is.
+(function () {
+    var flag = 'auth:isAuthenticated';
+    var request = new XMLHttpRequest();
+    try {
+        // Synchronous on purpose: the app module must not start first.
+        request.open('GET', '/api/users/current', false);
+        request.setRequestHeader('X-Requested-With', 'OpenIntegrationEngine-WebAdmin');
+        request.setRequestHeader('Accept', 'application/json');
+        request.send();
+    } catch (e) {
+        return;
+    }
+    if (request.status === 200) {
+        try { localStorage.setItem(flag, 'true'); } catch (e) {}
+        if (/^\/tls-manager\/login\/?$/.test(location.pathname)) {
+            location.replace('/tls-manager/');
+        }
+    } else if (request.status === 401 || request.status === 403) {
+        try { localStorage.removeItem(flag); } catch (e) {}
+        location.replace('/oie-webadmin/');
+    }
+})();
+EOF
+chmod 0644 "$TLS_MANAGER_SESSION_JS"
+
 NGINX_CONF=/etc/nginx/nginx.conf
 if [[ $PKG == dnf ]]; then nginx_user=nginx; else nginx_user=www-data; fi
 cat > "${NGINX_CONF}.new" <<EOF
@@ -691,6 +727,28 @@ ${redirect_server}
         }
 ${docs_locations}
 ${login_location}
+
+        # TLS Manager's page signs in on its own: it trusts a localStorage flag
+        # that only its password form sets, so an SSO session got its form. A
+        # script added ahead of the app sets the flag from the engine session,
+        # or sends a browser with none to the console to sign in.
+        location ^~ /tls-manager/ {
+            proxy_pass ${engine_upstream};
+            # Uncompressed, so sub_filter can edit it. Setting one header here
+            # drops the server's, so they are repeated.
+            proxy_set_header Accept-Encoding "";
+            proxy_set_header Connection "";
+            proxy_set_header Host \$http_host;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
+            sub_filter_once on;
+            sub_filter '<head>' '<head><script src="/tls-manager/__oie-session.js"></script>';
+        }
+        location = /tls-manager/__oie-session.js {
+            alias ${TLS_MANAGER_SESSION_JS};
+            default_type application/javascript;
+            add_header Cache-Control "no-store";
+        }
 
         location / {
             proxy_pass ${engine_upstream};

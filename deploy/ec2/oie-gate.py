@@ -13,7 +13,8 @@ requests go past this first (install.sh writes the nginx side):
   POST /api/users/_login
                the console's sign-in, proxied through here when
                WEB_LOCAL_LOGIN=false. A sign-in from the web administrator
-               (X-Requested-With: OpenIntegrationEngine-WebAdmin) that is not
+               (X-Requested-With: OpenIntegrationEngine-WebAdmin), or from any other
+               web page (Sec-Fetch-*/Origin headers), that is not
                the OIDC extension's ticket is refused with a LoginStatus the
                console shows. Everything else -- the SSO ticket, the Swing
                Administrator, scripts, the REST API -- is forwarded untouched,
@@ -176,7 +177,7 @@ class Gate(BaseHTTPRequestHandler):
             return self.reply(413)
         body = self.rfile.read(length) if length else b""
 
-        if self.headers.get("X-Requested-With") == WEBADMIN:
+        if self.from_browser():
             form = urllib.parse.parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
             password = (form.get("password") or [""])[0]
             if not password.startswith(TICKET_PREFIX):
@@ -185,6 +186,17 @@ class Gate(BaseHTTPRequestHandler):
                     f"from {self.headers.get('X-Forwarded-For', '?')}")
                 return self.refuse_login()
         self.forward(body)
+
+    def from_browser(self):
+        """A sign-in from a web page: the web administrator's own header, or the
+        Sec-Fetch-* / Origin headers every current browser adds to a script's
+        request -- which covers TLS Manager's sign-in form and any other page
+        posting a password. The Swing Administrator, scripts and curl send
+        none of them, so they keep password sign-in."""
+        return (self.headers.get("X-Requested-With") == WEBADMIN
+                or self.headers.get("Sec-Fetch-Mode") is not None
+                or self.headers.get("Sec-Fetch-Site") is not None
+                or self.headers.get("Origin") is not None)
 
     def refuse_login(self):
         # The shape the engine answers a failed sign-in with, which the console
