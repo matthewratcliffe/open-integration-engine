@@ -65,7 +65,9 @@ expired.
 - **Security groups**: RDS allows 5432 from the instance; the instance allows
   443 (console and API, through nginx) and 80 (redirect only) from your admin
   ranges, plus the ports your channels listen on. Not 8443: the engine listens
-  on loopback only.
+  on loopback only. The security group is the only firewall: each deploy
+  disables ufw, firewalld, and the nftables/iptables services if one is on, so
+  opening a channel's port there is enough.
 - **DNS**: `oie1.htrak.com` pointing at the instance's Elastic IP.
 
 ## Variables

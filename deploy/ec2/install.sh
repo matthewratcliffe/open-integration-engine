@@ -87,6 +87,30 @@ else
 fi
 
 ########################################################################
+# Host firewall: off, so the security group is the only one
+########################################################################
+# Channels listen on whatever ports their connectors name, and a host firewall
+# would need a rule for each one, kept in step with the channels by hand. A
+# listener behind a forgotten rule times out (or is refused) from outside,
+# which looks like a network fault or an undeployed channel. The security group already
+# decides who reaches which port, so the host firewall only adds a second list
+# to keep in step.
+#
+# Neither AMI enables one by default; this undoes one someone turned on.
+if command -v ufw >/dev/null && [[ "$(ufw status 2>/dev/null)" == "Status: active"* ]]; then
+    ufw --force disable >/dev/null
+    log "firewall: ufw was active, disabled"
+fi
+for fw in firewalld nftables iptables ip6tables; do
+    if systemctl is-active --quiet "$fw" 2>/dev/null || systemctl is-enabled --quiet "$fw" 2>/dev/null; then
+        systemctl disable --now "$fw" >/dev/null 2>&1 || true
+        # nftables.service and iptables.service stop by flushing their own
+        # rules; firewalld removes its own on stop. Nothing else here sets any.
+        log "firewall: ${fw}.service was on, disabled"
+    fi
+done
+
+########################################################################
 # Secrets from SSM Parameter Store
 ########################################################################
 # Remembered from the last run, so a re-run by hand needs no arguments.
