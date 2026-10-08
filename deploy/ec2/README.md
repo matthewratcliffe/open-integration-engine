@@ -132,6 +132,20 @@ of `OIE_OIDC_*` overrides rewritten on every deploy, so a variable removed in
 GitLab is removed from the engine too. While it pins anything, it owns those
 `OIE_OIDC_*` names, and a hand-set parameter for one of them is ignored.
 
+### The default alert
+
+Every deploy makes sure there is a **Connector errors (all channels)** alert
+(`scripts/oie-default-alert.sh`): every source and destination connector error
+-- a refused connection, an unknown host, a timeout -- on every channel,
+including channels created later. It sends no email. The engine only counts an
+alert as alerted, on the Alerts page, when it has an action, so its action
+sends each error to an **Alert inbox** channel (a Channel Reader, no port),
+where each one is a message with the channel, connector and the engine's error
+report; it prunes after 30 days when the Data Pruner is on. Both are created
+once: an alert that exists, changed or renamed in the console, is left alone,
+and deleting it brings it back on the next deploy unless `OIE_DEFAULT_ALERT` is
+`false`.
+
 ### Git Sync
 
 The Git Sync extension's settings (Settings > Git Sync) can come from GitLab

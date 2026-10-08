@@ -358,6 +358,8 @@ fi
 install -D -m 0755 "$HERE/entrypoint.sh" /usr/local/bin/oie-entrypoint
 install -d -m 0755 "$SCRIPTS_DIR"
 install -m 0755 "$HERE"/scripts/*.sh "$SCRIPTS_DIR/"
+install -d -m 0755 "$SCRIPTS_DIR/default-alert"
+install -m 0644 "$HERE"/scripts/default-alert/*.xml "$SCRIPTS_DIR/default-alert/"
 
 # The keystore handling the ECS task does before the entrypoint (infra/aws/
 # locals.tf): KEYSTORE_RESET deliberately replaces it, KEYSTORE_BASE64 seeds it
@@ -472,7 +474,7 @@ render_env() {
             OIE_UPDATE_CHECK|OIE_UPDATE_CHECK_EXTENSIONS|OIE_HEAP_MAX|OIE_VERSION|TZ|\
             OIE_ADMIN_PASSWORD|OIE_SSM_PATH|OIE_SHA256|OIE_TARBALL_URL|OIE_BUILTIN_PLUGIN_URLS|\
             OIE_WAIT_TIMEOUT|HTTP_REDIRECT|_MP_HTTPS_HOST|\
-            OIE_OIDC_SETTINGS|\
+            OIE_OIDC_SETTINGS|OIE_DEFAULT_ALERT|\
             OIE_EXTENSION_URLS)  # bundled instead, see custom-extensions above
                 continue ;;
             OIE_*|_MP_*|KEYSTORE_*|DATABASE*|SESSION_STORE|SERVER_ID|VMOPTIONS|DELAY|*_DOWNLOAD|*_FILE)
@@ -801,6 +803,11 @@ OIE_URL="https://127.0.0.1:${ENGINE_PORT}/api" OIE_INSECURE=true \
 # from SSM through this environment and are never written to oie.env.
 OIE_URL="https://127.0.0.1:${ENGINE_PORT}/api" OIE_INSECURE=true OIE_PASSWORD="$OIE_ADMIN_PASSWORD" \
     "$SCRIPTS_DIR/oie-gitsync-configure.sh"
+
+# The "Connector errors (all channels)" alert and its Alert inbox channel,
+# created once (scripts/oie-default-alert.sh); OIE_DEFAULT_ALERT=false skips it.
+OIE_URL="https://127.0.0.1:${ENGINE_PORT}/api" OIE_INSECURE=true OIE_PASSWORD="$OIE_ADMIN_PASSWORD" \
+    OIE_DEFAULT_ALERT="${OIE_DEFAULT_ALERT:-true}" "$SCRIPTS_DIR/oie-default-alert.sh"
 
 if [[ "$HTTPS_PORT" == 443 ]]; then
     log "done: https://<this host>/ (user admin)"

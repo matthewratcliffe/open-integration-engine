@@ -100,6 +100,7 @@ cp "${ROOT}/deploy/ec2/install.sh" "$bundle/install.sh"
 cp "${ROOT}/deploy/ec2/oie-gate.py" "$bundle/oie-gate.py"
 cp "${ROOT}/docker/entrypoint.sh" "$bundle/entrypoint.sh"
 cp "${ROOT}"/scripts/*.sh "$bundle/scripts/"
+cp -R "${ROOT}/scripts/default-alert" "$bundle/scripts/default-alert"
 find "${ROOT}/extensions" -mindepth 1 -maxdepth 1 ! -name README.md -exec cp -R {} "$bundle/extensions/" \;
 chmod 0755 "$bundle/install.sh" "$bundle/entrypoint.sh" "$bundle"/scripts/*.sh
 
