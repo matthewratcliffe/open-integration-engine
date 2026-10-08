@@ -232,15 +232,47 @@ export function register(platform) {
     }
 
     function Text(entry, key, onChange, placeholder) {
+        return h(TextInput, { entry: entry, field: key, onChange: onChange, placeholder: placeholder });
+    }
+
+    /*
+     * A text box that survives typing. The channel editor rebuilds this panel when
+     * told the connector changed, which recreates the input and loses focus -- so
+     * reporting every keystroke let one character in and dropped the rest. The text
+     * lives in local state and goes into the connector as it is typed (so a Save
+     * always has it); the editor is told once, when the box is left or Enter is
+     * pressed, which is when the rebuild can no longer interrupt anything.
+     */
+    function TextInput(props) {
+        const entry = props.entry;
+        const field = props.field;
+        const [text, setText] = React.useState(entry[field] == null ? '' : String(entry[field]));
+        const dirty = React.useRef(false);
+        const commit = function () {
+            if (dirty.current) {
+                dirty.current = false;
+                props.onChange();
+            }
+        };
         return h('input', {
             type: 'text',
-            value: entry[key] == null ? '' : entry[key],
-            placeholder: placeholder || '',
+            value: text,
+            placeholder: props.placeholder || '',
             className: 'w-full max-w-[420px]',
-            onInput: function (e) {
+            spellCheck: false,
+            autoComplete: 'off',
+            onChange: function (e) {
+                const value = e.target.value;
+                setText(value);
                 // Empty string back to null, matching the Java default.
-                entry[key] = e.target.value === '' ? null : e.target.value;
-                onChange();
+                entry[field] = value === '' ? null : value;
+                dirty.current = true;
+            },
+            onBlur: commit,
+            onKeyDown: function (e) {
+                if (e.key === 'Enter') {
+                    commit();
+                }
             },
         });
     }
