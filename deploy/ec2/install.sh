@@ -730,6 +730,26 @@ admin_signs_in() {
         | grep -qx 200
 }
 
+# admin_refusal -- why the engine refuses OIE_ADMIN_PASSWORD for admin, in its
+# own words: Basic auth only answers 401, but the login endpoint returns the
+# LoginStatus (a lockout, "This account signs in through SSO.", a wrong
+# password...). Plus what mirth.log said about it. The password goes through a
+# private file, url-encoded by curl.
+admin_refusal() {
+    local form status
+    form="$(mktemp)"
+    chmod 600 "$form"
+    printf '%s' "$OIE_ADMIN_PASSWORD" > "$form"
+    status="$(curl -sk --max-time 15 -H 'X-Requested-With: oie-install' -H 'Accept: application/json' \
+        --data-urlencode 'username=admin' --data-urlencode "password@${form}" \
+        "https://127.0.0.1:${ENGINE_PORT}/api/users/_login" || true)"
+    rm -f "$form"
+    log "the engine says: $(jq -r '(.["com.mirth.connect.model.LoginStatus"] // .) | "\(.status // "?"): \(.message // "no message")"' \
+        <<<"$status" 2>/dev/null || printf '%s' "${status:0:300}")"
+    log "mirth.log on admin, OIDC and sign-in, most recent last:"
+    grep -iE "admin|oidc|sso|login|locked|authoriz" /opt/engine/logs/mirth.log 2>/dev/null | tail -n 15 | sed 's/^/    /' || true
+}
+
 if [[ "$ADMIN_PASSWORD_FORCE" == true ]]; then
     deadline=$(( SECONDS + ${OIE_WAIT_TIMEOUT:-600} ))
     until curl -sk -o /dev/null --max-time 10 --fail -H 'X-Requested-With: oie-install' \
@@ -741,6 +761,7 @@ if [[ "$ADMIN_PASSWORD_FORCE" == true ]]; then
         log "admin signs in with OIE_ADMIN_PASSWORD"
     else
         log "admin does not sign in with OIE_ADMIN_PASSWORD: resetting the account (ADMIN_PASSWORD_FORCE)"
+        admin_refusal
         salt_file="$(mktemp)"
         openssl rand -out "$salt_file" 8
         digest="SALT_$(base64 -w0 "$salt_file")$({ cat "$salt_file"; printf '%s' "$OIE_ADMIN_PASSWORD"; } \
@@ -761,7 +782,10 @@ SQL
 )" || die "could not reset admin in ${DB_NAME} -- is there an admin account?"
         unset digest
         [[ -z "$reset_out" ]] || log "admin: $(printf '%s' "$reset_out" | paste -sd, - | sed 's/,/, /g')"
-        admin_signs_in || die "admin still does not sign in after the reset -- see /opt/engine/logs/mirth.log"
+        if ! admin_signs_in; then
+            admin_refusal
+            die "admin still does not sign in after the reset; the reason is above"
+        fi
         log "admin reset: it signs in with OIE_ADMIN_PASSWORD again"
     fi
 fi
