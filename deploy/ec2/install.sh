@@ -714,40 +714,39 @@ log "nginx: https on ${HTTPS_PORT} to the engine on 127.0.0.1:${ENGINE_PORT}; we
 #
 # The password goes in in the engine's pre-2.2 format, SALT_ + base64(8-byte
 # salt) + base64(sha1(salt + password)): the one format it accepts that can be
-# made without its Java digester, and it re-digests it into the current format
-# on that first sign-in (DefaultUserController.authorizeUser).
+# made without its Java digester. Only the login endpoint reads it, though
+# (DefaultUserController.authorizeUser, which re-digests it into the current
+# format); Basic auth refuses it. So the check below signs in through the login
+# endpoint, which also upgrades the hash, after which Basic auth -- what the
+# admin bootstrap and the Git Sync script use -- accepts the password too.
 ADMIN_PASSWORD_FORCE="${ADMIN_PASSWORD_FORCE:-true}"
 [[ "$ADMIN_PASSWORD_FORCE" == true || "$ADMIN_PASSWORD_FORCE" == false ]] \
     || die "ADMIN_PASSWORD_FORCE must be true or false, not ${ADMIN_PASSWORD_FORCE}"
 
-# admin_signs_in -- true when OIE_ADMIN_PASSWORD signs in as admin. The
-# credential goes to curl on stdin, not its command line.
-admin_signs_in() {
-    local pass="${OIE_ADMIN_PASSWORD//\\/\\\\}"
-    printf 'user = "admin:%s"\n' "${pass//\"/\\\"}" \
-        | curl -K - -sk -o /dev/null -w '%{http_code}' --max-time 15 \
-            -H 'X-Requested-With: oie-install' "https://127.0.0.1:${ENGINE_PORT}/api/users/current" \
-        | grep -qx 200
-}
-
-# admin_refusal -- why the engine refuses OIE_ADMIN_PASSWORD for admin, in its
-# own words: Basic auth only answers 401, but the login endpoint returns the
-# LoginStatus (a lockout, "This account signs in through SSO.", a wrong
-# password...). Plus what mirth.log said about it. The password goes through a
-# private file, url-encoded by curl.
-admin_refusal() {
-    local form status
+# admin_login -- signs in as admin with OIE_ADMIN_PASSWORD through the login
+# endpoint and sets ADMIN_LOGIN to the engine's answer, "STATUS: message" (a
+# lockout, "This account signs in through SSO.", a wrong password...). True on
+# SUCCESS or SUCCESS_GRACE_PERIOD. The password reaches curl through a private
+# file, url-encoded.
+admin_login() {
+    local form answer
     form="$(mktemp)"
     chmod 600 "$form"
     printf '%s' "$OIE_ADMIN_PASSWORD" > "$form"
-    status="$(curl -sk --max-time 15 -H 'X-Requested-With: oie-install' -H 'Accept: application/json' \
+    answer="$(curl -sk --max-time 15 -H 'X-Requested-With: oie-install' -H 'Accept: application/json' \
         --data-urlencode 'username=admin' --data-urlencode "password@${form}" \
         "https://127.0.0.1:${ENGINE_PORT}/api/users/_login" || true)"
     rm -f "$form"
-    log "the engine says: $(jq -r '(.["com.mirth.connect.model.LoginStatus"] // .) | "\(.status // "?"): \(.message // "no message")"' \
-        <<<"$status" 2>/dev/null || printf '%s' "${status:0:300}")"
+    ADMIN_LOGIN="$(jq -r '(.["com.mirth.connect.model.LoginStatus"] // .) | "\(.status // "?"): \(.message // "no message")"' \
+        <<<"$answer" 2>/dev/null || printf 'unreadable answer: %s' "${answer:0:300}")"
+    [[ "$ADMIN_LOGIN" == SUCCESS* ]]
+}
+
+# What mirth.log said lately about admin, OIDC and signing in; stack frames left out.
+admin_log_lines() {
     log "mirth.log on admin, OIDC and sign-in, most recent last:"
-    grep -iE "admin|oidc|sso|login|locked|authoriz" /opt/engine/logs/mirth.log 2>/dev/null | tail -n 15 | sed 's/^/    /' || true
+    grep -iE "admin|oidc|login|log in|locked|authoriz|password" /opt/engine/logs/mirth.log 2>/dev/null \
+        | grep -vE '^[[:space:]]+at |^[[:space:]]*\.\.\. [0-9]+ more' | tail -n 15 | sed 's/^/    /' || true
 }
 
 if [[ "$ADMIN_PASSWORD_FORCE" == true ]]; then
@@ -757,11 +756,11 @@ if [[ "$ADMIN_PASSWORD_FORCE" == true ]]; then
         (( SECONDS < deadline )) || die "the engine did not come up on 127.0.0.1:${ENGINE_PORT} -- journalctl -u oie"
         sleep 5
     done
-    if admin_signs_in; then
+    if admin_login; then
         log "admin signs in with OIE_ADMIN_PASSWORD"
     else
-        log "admin does not sign in with OIE_ADMIN_PASSWORD: resetting the account (ADMIN_PASSWORD_FORCE)"
-        admin_refusal
+        log "admin does not sign in with OIE_ADMIN_PASSWORD (the engine says ${ADMIN_LOGIN}): resetting the account (ADMIN_PASSWORD_FORCE)"
+        admin_log_lines
         salt_file="$(mktemp)"
         openssl rand -out "$salt_file" 8
         digest="SALT_$(base64 -w0 "$salt_file")$({ cat "$salt_file"; printf '%s' "$OIE_ADMIN_PASSWORD"; } \
@@ -782,9 +781,9 @@ SQL
 )" || die "could not reset admin in ${DB_NAME} -- is there an admin account?"
         unset digest
         [[ -z "$reset_out" ]] || log "admin: $(printf '%s' "$reset_out" | paste -sd, - | sed 's/,/, /g')"
-        if ! admin_signs_in; then
-            admin_refusal
-            die "admin still does not sign in after the reset; the reason is above"
+        if ! admin_login; then
+            admin_log_lines
+            die "admin still does not sign in after the reset: the engine says ${ADMIN_LOGIN}"
         fi
         log "admin reset: it signs in with OIE_ADMIN_PASSWORD again"
     fi
