@@ -25,8 +25,9 @@
 #   GIT_SYNC_PULL_INTERVAL_SECONDS  scheduled pull; 0 turns it off
 #   GIT_SYNC_SCOPE                comma-separated: channels, code-templates,
 #                                 channel-groups, configuration-map, alerts,
-#                                 global-scripts, server-settings, ... (empty: the
-#                                 extension's default set)
+#                                 global-scripts, server-settings, ..., tls-manager
+#                                 (TLS Manager key pairs, private keys unencrypted;
+#                                 empty: the extension's default set)
 #   GIT_SYNC_KNOWN_HOSTS          known_hosts lines for an SSH remote (multi-line)
 #
 # With none of them set it does nothing. Fails when the engine rejects the

@@ -165,7 +165,7 @@ applied on every deploy, so a console edit of it lasts until the next one.
 | `GIT_SYNC_SUBDIRECTORY` | path in the repository for this engine, when one repository holds several |
 | `GIT_SYNC_AUTHOR_NAME`, `GIT_SYNC_AUTHOR_EMAIL` | who commits from this engine |
 | `GIT_SYNC_PULL_INTERVAL_SECONDS` | scheduled pull; `0` turns it off |
-| `GIT_SYNC_SCOPE` | comma-separated: `channels`, `code-templates`, `channel-groups`, `configuration-map`, `alerts`, `global-scripts`, `server-settings`, `administrator-settings`, `channel-tags`, `resources`, `data-pruner`, `volume-monitor`. Empty is the extension's default set |
+| `GIT_SYNC_SCOPE` | comma-separated: `channels`, `code-templates`, `channel-groups`, `configuration-map`, `alerts`, `global-scripts`, `server-settings`, `administrator-settings`, `channel-tags`, `resources`, `data-pruner`, `volume-monitor`, `tls-manager`. Empty is the extension's default set. `tls-manager` puts TLS Manager's key pairs -- a CA's, and the Certificate Generator's -- and trusted certificates in the repository with their **private keys unencrypted**: guard the repository like the keys |
 | `GIT_SYNC_KNOWN_HOSTS` | `known_hosts` lines for an SSH remote; without them host keys are not checked |
 
 An unrecognised auth type, mode or interval fails the deploy before anything
