@@ -141,7 +141,20 @@ The API is at `/api/tlsmanager` (not under `/api/extensions`): `GET`/`PUT`
 `/localCertificates` and `/trustedCertificates`, plus `/systemCertificates`,
 `/remoteCertificates` and the `testTcpConnection` / `testHttpsConnection` /
 `testWsConnection` probes. Both write endpoints **replace the whole list**, which
-is why the script reads, merges by alias, and writes back.
+is why the script reads, merges by alias, and writes back for trusted
+certificates.
+
+Key pairs are different: `PUT /localCertificates` keeps only the **first**
+certificate of each entry's PEM, so it drops a leaf's intermediates — and,
+because every write replaces the whole list, it does the same to every other key
+pair. `keypair` therefore goes through Certificate Generator's
+`/api/certgen/import` (0.3.0 or later), which stores the whole chain. It
+replaces a key pair already under the alias, leaves an identical one alone, and
+after a real change redeploys the deployed channels presenting it — a running
+listener keeps the certificate it was deployed with.
+
+The EC2 deploy uses it to put the `*.htrak.com` certificate in TLS Manager as
+`htrak-wildcard` on every deploy (`deploy/ec2/README.md`, "The certificate").
 
 ## Zen SSL, if you prefer it
 

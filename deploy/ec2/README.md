@@ -105,6 +105,7 @@ Optional:
 | `KEYSTORE_RESET` | set to a new value to deliberately replace the keystore, as on ECS |
 | `OIE_HEAP_MAX` | the engine's heap; default half the instance's memory, at least `512m` (about `1900m` on a 4 GB instance, which the OS reports as ~3.8 GB) |
 | `ADMIN_PASSWORD_FORCE` | default `true`: when `OIE_ADMIN_PASSWORD` does not sign in as `admin`, the deploy resets the account in the database -- removes its SSO binding, clears its lockout and makes `OIE_ADMIN_PASSWORD` its password -- then proves it signs in. So `admin` stays the break-glass account whatever was done to it in the console. An SSO identity mapped to `admin` under Linked accounts re-binds it on its next sign-in; remove that mapping. `false` leaves the account alone, and a deploy that cannot sign in fails |
+| `TLS_KEYPAIR_ALIAS` | the TLS Manager key pair the certificate is saved as, default `htrak-wildcard`. See [The certificate](#the-certificate). Changing it adds a key pair under the new name and leaves the old one |
 | `HTTPS_PORT` | the port nginx serves the console and API on, default `443`. The engine itself is on `127.0.0.1:8443` |
 | `HTTP_REDIRECT` | default `true`: nginx on port 80 answers every request with a redirect to HTTPS, and serves nothing else. `false` closes 80 |
 | `WEB_LOCAL_LOGIN` | default `true`. `false` turns off password sign-in on the web administrator, leaving it SSO only. See [Ports and the proxy](#ports-and-the-proxy) |
@@ -261,6 +262,21 @@ entry, including the data-encryption key, is left as it is. The previous
 keystore is kept as `keystore.jks.before-tls`, and a failed import puts it back
 and starts on the old certificate. Without the parameters the engine serves
 its own self-signed certificate.
+
+Each deploy also puts it in **TLS Manager as a key pair**, `htrak-wildcard`
+(`TLS_KEYPAIR_ALIAS` to name it otherwise), so a channel's TLS listener can
+present it: in the channel's source **TLS Settings**, pick it as the **Server
+certificate alias**. Clients then see a certificate for `*.htrak.com` from a
+public CA, with its intermediate, rather than a private one naming no host. The
+deploy log says whether the key pair was added, updated or unchanged. When a
+renewed certificate updates it, the deploy also redeploys the channels that are
+deployed and present it, since a running listener keeps the certificate it
+started with; stopped channels are left stopped.
+
+This goes through Certificate Generator (`/api/certgen/import`, 0.3.0 or later,
+one of the built-in plugins) rather than TLS Manager's own API, which keeps only
+the first certificate of a chain and strips the chains of every other key pair
+on each write. See `scripts/oie-tls-import.sh`.
 
 ## The keystore
 

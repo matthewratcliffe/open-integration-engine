@@ -915,6 +915,19 @@ OIE_URL="https://127.0.0.1:${ENGINE_PORT}/api" OIE_INSECURE=true OIE_PASSWORD="$
 OIE_URL="https://127.0.0.1:${ENGINE_PORT}/api" OIE_INSECURE=true OIE_PASSWORD="$OIE_ADMIN_PASSWORD" \
     OIE_DEFAULT_ALERT="${OIE_DEFAULT_ALERT:-true}" "$SCRIPTS_DIR/oie-default-alert.sh"
 
+# The same certificate as a TLS Manager key pair, so a channel's TLS listener
+# can present it: TLS Settings > Server certificate alias. Under one stable
+# alias, so a renewed certificate replaces it in place and channels keep
+# pointing at it; the deploy says whether it was added, updated or unchanged.
+# The whole chain goes in -- clients need the intermediate to verify a public
+# CA's certificate (scripts/oie-tls-import.sh says why that is not TLS
+# Manager's own API).
+if [[ -s "$TLS_DIR/cert.pem" && -s "$TLS_DIR/key.pem" ]]; then
+    OIE_URL="https://127.0.0.1:${ENGINE_PORT}/api" OIE_INSECURE=true OIE_PASSWORD="$OIE_ADMIN_PASSWORD" \
+        "$SCRIPTS_DIR/oie-tls-import.sh" keypair "${TLS_KEYPAIR_ALIAS:-htrak-wildcard}" \
+        "$TLS_DIR/cert.pem" "$TLS_DIR/key.pem"
+fi
+
 if [[ "$HTTPS_PORT" == 443 ]]; then
     log "done: https://<this host>/ (user admin)"
 else

@@ -53,7 +53,7 @@ sha256:bd0802f87c57a9dd1dc75677607115360935e5267316b79c38dd022396722a03@https://
 sha256:39bcbf226344e1397ce9285df048aee65c6630f2a0ba13457b7caa73a6f657b1@https://github.com/matthewratcliffe/oie-cluster/releases/download/v0.1.1/cluster-0.1.1.zip,\
 sha256:00564877079f078ed1da1ba8821811d14c48301320b2fc98d183fea93e0bde62@https://github.com/matthewratcliffe/oie-backup/releases/download/v0.1.1/backup-0.1.1.zip,\
 sha256:9e281c2b1d1140379fa21dd0d83e2224349d38897d5200e6aa3b2c214bc6f1ec@https://github.com/matthewratcliffe/oie-whoami/releases/download/v0.1.0/whoami-0.1.0.zip,\
-sha256:2db65fd33fdb193871b5caf92681ba594abf3eeccebdb1acd5af679cddd7ae2b@https://github.com/matthewratcliffe/oie-cert-generator/releases/download/v0.2.0/certgen-0.2.0.zip"
+sha256:e2e347097f26a67466b329f293c2b99b99d3272d1fc8593706d1654871510878@https://github.com/matthewratcliffe/oie-cert-generator/releases/download/v0.3.0/certgen-0.3.0.zip"
 
 # Trim the Administrator client jars (~82MB, only needed if operators launch the
 # Administrator GUI from this server) and the mccommand CLI (~32MB, superseded
