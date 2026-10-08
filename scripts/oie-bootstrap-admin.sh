@@ -13,9 +13,12 @@
 # starts working on its own and this script then no-ops).
 #
 # Runs in three states:
-#   already rotated  -> OIE_ADMIN_PASSWORD works, exit 0, change nothing
+#   already rotated  -> OIE_ADMIN_PASSWORD works, exit 0, password unchanged
 #   fresh install    -> admin/admin works, set the password, exit 0
 #   neither works    -> exit 1 without touching anything
+#
+# The first two also settle the web administrator's first-login welcome dialog
+# for admin (settle_first_login).
 
 set -euo pipefail
 
@@ -34,8 +37,40 @@ can_login() {
     OIE_PASSWORD="$1" oie_api GET /users/current >/dev/null 2>&1
 }
 
+# user_id_of <password> -- the numeric id the /users/{id}/... endpoints want,
+# from /users/current, rather than assuming the admin account is always id 1.
+user_id_of() {
+    local user_xml
+    user_xml="$(OIE_PASSWORD="$1" oie_api GET /users/current)" || return 1
+    # Matched in-shell: `sed | head -1` would take SIGPIPE under `set -o pipefail`.
+    [[ "$user_xml" =~ \<id\>([0-9]+)\</id\> ]] || return 1
+    printf '%s' "${BASH_REMATCH[1]}"
+}
+
+# The web administrator opens a "Welcome to Open Integration Engine" dialog
+# -- new password, then a registration form -- while the account's firstlogin
+# preference is unset or true. The password is the one configured here, so
+# settle the flag. (SSO accounts the OIDC extension creates have it settled
+# by the extension.) Cosmetic, so a failure only warns.
+settle_first_login() {
+    local user_id status
+    if user_id="$(user_id_of "$OIE_ADMIN_PASSWORD")"; then
+        OIE_PASSWORD="$OIE_ADMIN_PASSWORD" _oie_build_args
+        status="$(curl "${oie_curl_args[@]}" --output /dev/null --write-out '%{http_code}' \
+            --request PUT --header 'Content-Type: text/plain' --data-binary false \
+            "${OIE_URL}/users/${user_id}/preferences/firstlogin")" || status=000
+        if [[ "$status" =~ ^2 ]]; then
+            printf 'first-login welcome dialog settled for %s\n' "${OIE_USER}"
+            return 0
+        fi
+    fi
+    printf 'warning: could not clear the first-login flag for %s (HTTP %s); the web administrator will show its welcome dialog once\n' \
+        "${OIE_USER}" "${status:-000}" >&2
+}
+
 if can_login "$OIE_ADMIN_PASSWORD"; then
-    printf 'admin password is already set as configured, nothing to do\n'
+    printf 'admin password is already set as configured\n'
+    settle_first_login
     exit 0
 fi
 
@@ -48,18 +83,10 @@ fi
 
 printf 'admin is still on the shipped default password, rotating it\n'
 
-# /users/current tells us the numeric id the password endpoint wants, rather
-# than assuming the admin account is always id 1.
-user_xml="$(OIE_PASSWORD="$DEFAULT_PASSWORD" oie_api GET /users/current)"
-# Matched in-shell: `sed | head -1` would take SIGPIPE under `set -o pipefail`.
-user_id=""
-if [[ "$user_xml" =~ \<id\>([0-9]+)\</id\> ]]; then
-    user_id="${BASH_REMATCH[1]}"
-fi
-if [[ -z "$user_id" ]]; then
+user_id="$(user_id_of "$DEFAULT_PASSWORD")" || {
     printf 'could not read the admin user id from /users/current\n' >&2
     exit 1
-fi
+}
 
 # The endpoint takes the plaintext password as a text/plain body and answers
 # with a list of unmet password requirements -- an empty list means accepted.
@@ -94,6 +121,7 @@ fi
 
 if can_login "$OIE_ADMIN_PASSWORD"; then
     printf 'admin password rotated successfully\n'
+    settle_first_login
 else
     printf 'password change reported success but the new password does not work\n' >&2
     exit 1

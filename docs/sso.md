@@ -223,10 +223,10 @@ Locally, this repository configures from the console, which is why `compose.sso-
 passes only the kill switch and no longer passes settings. The AWS deployment can do
 either: with `OIDC_ENABLED` unset in GitLab it configures from the console, and with it
 set the plan pins the provider settings (discovery URL, client id and secret, the web
-administrator URL, and optionally the label, username claim, scopes and auto-redirect)
-from environment-scoped CI variables — see `infra/aws/README.md`. The EC2 deploy takes the
-same variables (`deploy/ec2/README.md`). Roles, linked
-accounts and JIT stay in the console either way. For any other deployment that needs
+administrator URL, JIT provisioning — on unless `OIDC_JIT_ENABLED=false` — and optionally the
+label, username claim, scopes and auto-redirect) from environment-scoped CI variables — see
+`infra/aws/README.md`. The EC2 deploy takes the same variables (`deploy/ec2/README.md`). Roles
+and linked accounts stay in the console either way. For any other deployment that needs
 the other direction — a deployment that configures machines rather than consoles, with the policy in
 your secret store and the console read-only — pass the variables in an overlay of your own,
 declared in list form so that an unset variable stays *absent* from the container rather

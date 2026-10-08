@@ -129,7 +129,7 @@ fi
 # override. {} pins nothing, and OIE_OIDC_* parameters put in SSM by hand apply.
 OIDC_PINNED=(OIE_OIDC_ENABLED OIE_OIDC_WEB_ADMINISTRATOR_URL OIE_OIDC_DISCOVERY_URL
     OIE_OIDC_CLIENT_ID OIE_OIDC_CLIENT_SECRET OIE_OIDC_PROVIDER_LABEL
-    OIE_OIDC_USERNAME_CLAIM OIE_OIDC_SCOPES OIE_OIDC_AUTO_REDIRECT)
+    OIE_OIDC_USERNAME_CLAIM OIE_OIDC_SCOPES OIE_OIDC_AUTO_REDIRECT OIE_OIDC_JIT_ENABLED)
 if [[ -n "${OIE_OIDC_SETTINGS:-}" ]]; then
     jq -e 'type == "object" and all(.[]; type == "string")' <<<"$OIE_OIDC_SETTINGS" >/dev/null 2>&1 \
         || die "OIE_OIDC_SETTINGS is not a JSON object of strings"

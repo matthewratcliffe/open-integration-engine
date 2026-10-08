@@ -116,7 +116,8 @@ The same `OIDC_*` variables as the ECS deploy (`infra/aws/README.md`,
 console. Set, the deploy pins the provider settings - `OIDC_ENABLED`,
 `OIDC_DISCOVERY_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, and optionally
 `OIDC_PROVIDER_LABEL`, `OIDC_USERNAME_CLAIM`, `OIDC_SCOPES`,
-`OIDC_AUTO_REDIRECT` - and derives the web administrator URL from
+`OIDC_AUTO_REDIRECT`, plus JIT provisioning, on unless `OIDC_JIT_ENABLED=false`
+(see `infra/aws/README.md` for what that admits) - and derives the web administrator URL from
 `EC2_HOSTNAME` (set by the job, `oie1.htrak.com`), so the redirect URI to
 register at the provider is `https://oie1.htrak.com/oie-webadmin/oidc/callback`.
 The job log prints it. It differs from the ECS engine's (`oie.htrak.com`), so a

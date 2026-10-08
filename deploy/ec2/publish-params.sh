@@ -100,7 +100,7 @@ echo "not set in GitLab, left as they are in SSM: ${skipped[*]:-none}"
 # and leaves SSO to the console. OIDC_AUTO_REDIRECT=true hides the password
 # form but does not disable password login, which stays the break-glass path.
 if [[ -z "${OIDC_ENABLED:-}" ]]; then
-    for v in OIDC_DISCOVERY_URL OIDC_CLIENT_ID OIDC_CLIENT_SECRET OIDC_PROVIDER_LABEL OIDC_USERNAME_CLAIM OIDC_SCOPES OIDC_AUTO_REDIRECT; do
+    for v in OIDC_DISCOVERY_URL OIDC_CLIENT_ID OIDC_CLIENT_SECRET OIDC_PROVIDER_LABEL OIDC_USERNAME_CLAIM OIDC_SCOPES OIDC_AUTO_REDIRECT OIDC_JIT_ENABLED; do
         [[ -z "${!v:-}" ]] \
             || { echo "$v is set but OIDC_ENABLED is not - set OIDC_ENABLED=true (or false) to pin SSO from GitLab, or unset $v" >&2; exit 1; }
     done
@@ -113,10 +113,18 @@ else
         true) [[ "$OIDC_ENABLED" == true ]] || { echo "OIDC_AUTO_REDIRECT=true needs OIDC_ENABLED=true" >&2; exit 1; } ;;
         *) echo "OIDC_AUTO_REDIRECT must be true or false, not '$OIDC_AUTO_REDIRECT'" >&2; exit 1 ;;
     esac
+    # JIT provisioning ("JIT provision unknown users") is on whenever SSO is
+    # pinned on, so anyone the provider admits gets an engine account.
+    # OIDC_JIT_ENABLED=false turns it off.
+    jit=""
     if [[ "$OIDC_ENABLED" == true ]]; then
         for v in OIDC_DISCOVERY_URL OIDC_CLIENT_ID OIDC_CLIENT_SECRET; do
             [[ -n "${!v:-}" ]] || { echo "OIDC_ENABLED=true needs $v" >&2; exit 1; }
         done
+        jit="${OIDC_JIT_ENABLED:-true}"
+        case "$jit" in true|false) ;; *) echo "OIDC_JIT_ENABLED must be true or false, not '$jit'" >&2; exit 1 ;; esac
+    elif [[ -n "${OIDC_JIT_ENABLED:-}" ]]; then
+        echo "OIDC_JIT_ENABLED needs OIDC_ENABLED=true" >&2; exit 1
     fi
     : "${EC2_HOSTNAME:?EC2_HOSTNAME is not set -- the host name of the instance, for the web administrator URL}"
     webadmin="https://${EC2_HOSTNAME}"
@@ -132,7 +140,8 @@ else
         --arg claim "${OIDC_USERNAME_CLAIM:-}" \
         --arg scopes "${OIDC_SCOPES:-}" \
         --arg redirect "${OIDC_AUTO_REDIRECT:-}" \
-        '{OIE_OIDC_ENABLED: $enabled, OIE_OIDC_WEB_ADMINISTRATOR_URL: $webadmin, OIE_OIDC_DISCOVERY_URL: $discovery, OIE_OIDC_CLIENT_ID: $client, OIE_OIDC_CLIENT_SECRET: $secret, OIE_OIDC_PROVIDER_LABEL: $label, OIE_OIDC_USERNAME_CLAIM: $claim, OIE_OIDC_SCOPES: $scopes, OIE_OIDC_AUTO_REDIRECT: $redirect} | with_entries(select(.value != ""))' \
+        --arg jit "$jit" \
+        '{OIE_OIDC_ENABLED: $enabled, OIE_OIDC_WEB_ADMINISTRATOR_URL: $webadmin, OIE_OIDC_DISCOVERY_URL: $discovery, OIE_OIDC_CLIENT_ID: $client, OIE_OIDC_CLIENT_SECRET: $secret, OIE_OIDC_PROVIDER_LABEL: $label, OIE_OIDC_USERNAME_CLAIM: $claim, OIE_OIDC_SCOPES: $scopes, OIE_OIDC_AUTO_REDIRECT: $redirect, OIE_OIDC_JIT_ENABLED: $jit} | with_entries(select(.value != ""))' \
         > "$work/oidc.json"
     echo "SSO pinned from GitLab: $(jq -c 'del(.OIE_OIDC_CLIENT_SECRET)' "$work/oidc.json")${OIDC_CLIENT_SECRET:+ + OIE_OIDC_CLIENT_SECRET}"
     echo "Register ${webadmin}/oidc/callback as the redirect URI at the provider"

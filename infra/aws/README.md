@@ -122,9 +122,15 @@ Required GitLab variables:
     of showing the password form. It **hides** local sign-in, it does not
     disable it: the REST API and the admin account still accept a password,
     which is the break-glass path when the provider is down.
+  - JIT provisioning ("JIT provision unknown users") is pinned **on** with
+    `OIDC_ENABLED=true`: anyone the provider admits gets an engine account on
+    first sign-in. This stack ships no RBAC extension, so that account has full
+    administrative access - restrict who can sign in at the provider (in
+    Entra, *Assignment required* on the enterprise app). `OIDC_JIT_ENABLED=false`
+    turns it off.
 
-  A pinned field is read-only in the console. Role mappings, linked accounts
-  and JIT provisioning are not pinned, and stay in the console. Any `OIDC_*`
+  A pinned field is read-only in the console. Role mappings and linked
+  accounts are not pinned, and stay in the console. Any `OIDC_*`
   variable set without `OIDC_ENABLED` fails the plan rather than being
   ignored.
 
