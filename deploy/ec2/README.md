@@ -44,7 +44,7 @@ expired.
 ## What you need
 
 - **The instance**: Amazon Linux 2023, t3.medium or larger, with a `Name` tag.
-  Give `OIE_HEAP_MAX` about half its memory. No user data is needed.
+  The heap defaults to half its memory. No user data is needed.
 - **Its role**: `AmazonSSMManagedInstanceCore`, plus
 
   ```json
@@ -101,7 +101,7 @@ Optional:
 | `RDS_MASTER_USERNAME`, `RDS_MASTER_PASSWORD` | the installer creates the user and database on RDS with them (idempotently). Default to the shared outputs' credentials, decrypted with `ENCRYPTION_KEY` as the ECS plan does |
 | `KEYSTORE_BASE64` | a keystore to install when the instance has none, `base64 -w0 keystore.jks`. Defaults to `OIE_KEYSTORE_B64`. Recommended: see below |
 | `KEYSTORE_RESET` | set to a new value to deliberately replace the keystore, as on ECS |
-| `OIE_HEAP_MAX` | default `1g` |
+| `OIE_HEAP_MAX` | the engine's heap; default half the instance's memory, at least `512m` (about `1900m` on a 4 GB instance, which the OS reports as ~3.8 GB) |
 | `ADMIN_PASSWORD_FORCE` | default `true`: when `OIE_ADMIN_PASSWORD` does not sign in as `admin`, the deploy resets the account in the database -- removes its SSO binding, clears its lockout and makes `OIE_ADMIN_PASSWORD` its password -- then proves it signs in. So `admin` stays the break-glass account whatever was done to it in the console. An SSO identity mapped to `admin` under Linked accounts re-binds it on its next sign-in; remove that mapping. `false` leaves the account alone, and a deploy that cannot sign in fails |
 | `HTTPS_PORT` | the port nginx serves the console and API on, default `443`. The engine itself is on `127.0.0.1:8443` |
 | `HTTP_REDIRECT` | default `true`: nginx on port 80 answers every request with a redirect to HTTPS, and serves nothing else. `false` closes 80 |

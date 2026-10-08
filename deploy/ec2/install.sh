@@ -202,6 +202,23 @@ if [[ "$HTTP_REDIRECT" == true && "${HTTP_PORT:-0}" == 80 ]]; then
     die "HTTP_PORT=80 puts the engine's plaintext listener where the HTTPS redirect goes: set HTTP_REDIRECT=false too, or leave HTTP_PORT off"
 fi
 
+# The engine's heap: OIE_HEAP_MAX when set, otherwise half this instance's memory
+# (at least 512m), which leaves the rest to the OS, nginx, the gate and the JVM's
+# own overhead -- about 1.9g on a 4 GB instance (the kernel keeps some), and it
+# follows an instance type change.
+if [[ -z "${OIE_HEAP_MAX:-}" ]]; then
+    mem_kb="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || true)"
+    if [[ "$mem_kb" =~ ^[0-9]+$ ]]; then
+        heap_mb=$(( mem_kb / 1024 / 2 ))
+        (( heap_mb >= 512 )) || heap_mb=512
+        OIE_HEAP_MAX="${heap_mb}m"
+        log "heap: ${OIE_HEAP_MAX}, half of this instance's $(( mem_kb / 1024 )) MB (set OIE_HEAP_MAX to choose)"
+    else
+        OIE_HEAP_MAX=1g
+        log "heap: 1g (could not read /proc/meminfo; set OIE_HEAP_MAX to choose)"
+    fi
+fi
+
 # The release and plugins are whatever the bundle carries (release.env).
 INCLUDE_ADMIN_CLIENT="${INCLUDE_ADMIN_CLIENT:-true}"
 INCLUDE_CLI="${INCLUDE_CLI:-false}"
@@ -455,7 +472,7 @@ render_env() {
     env_line _MP_SERVER_API_CONTENTSECURITYPOLICY "${API_CSP:-frame-ancestors 'self'}"
     env_line OIE_UPDATE_CHECK "${OIE_UPDATE_CHECK:-true}"
     env_line OIE_UPDATE_CHECK_EXTENSIONS "$OIE_UPDATE_CHECK_EXTENSIONS"
-    env_line OIE_HEAP_MAX "${OIE_HEAP_MAX:-1g}"
+    env_line OIE_HEAP_MAX "$OIE_HEAP_MAX"
     env_line OIE_VERSION "$OIE_VERSION"
     env_line TZ "${TZ:-UTC}"
 
