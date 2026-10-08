@@ -6,7 +6,7 @@
 #   # a key pair the engine presents (server cert, or a client cert for senders)
 #   ./scripts/oie-tls-import.sh keypair <alias> <cert.pem> <key.pem>
 #
-#   # a CA or peer certificate to trust
+#   # a CA or peer certificate to trust (one certificate per file)
 #   ./scripts/oie-tls-import.sh trust <alias> <ca.pem>
 #
 #   ./scripts/oie-tls-import.sh list
@@ -29,7 +29,8 @@
 #
 # Trusted certificates are single certificates, so they use TLS Manager's API,
 # which replaces the whole list on write: this reads it, merges the new entry by
-# alias, and writes it back.
+# alias, and writes it back -- or writes nothing when the alias already holds
+# that certificate. Both say whether the entry was added, updated or unchanged.
 #
 # Requires: bash, curl, python3 (for JSON and XML assembly).
 
@@ -72,6 +73,45 @@ tls_put() {
         --data-binary "@$2" \
         --output /dev/null \
         "${OIE_URL}${TLS_BASE}$1"
+}
+
+# redeploy_users <store path> <item key> <alias> <what they do with it>
+#
+# A deployed TLS connector keeps the key pair and trusted certificates it was
+# deployed with, so a change reaches it only when its channel redeploys. TLS
+# Manager knows which channels use an alias, by name; only those deployed now
+# are redeployed, so a stopped channel stays stopped.
+redeploy_users() {
+    local store="$1" key="$2" alias="$3" what="$4" in_use deployed ids id name
+    in_use="$(tls_get "$store")"
+    _oie_build_args
+    deployed="$(curl "${oie_curl_args[@]}" --fail "${OIE_URL}/channels/statuses")"
+    ids="$(KEY="$key" ALIAS="$alias" IN_USE="$in_use" DEPLOYED="$deployed" python3 - <<'PY'
+import json, os
+def items(node, key):
+    v = ((node or {}).get("list") or {}).get(key) or []
+    return v if isinstance(v, list) else [v]
+alias = os.environ["ALIAS"].lower()  # PKCS#12 lowercases aliases
+names = set()
+for c in items(json.loads(os.environ["IN_USE"]), os.environ["KEY"]):
+    if (c.get("alias") or "").lower() == alias:
+        used = (c.get("channelsInUse") or {}).get("string") or []
+        names.update(used if isinstance(used, list) else [used])
+for s in items(json.loads(os.environ["DEPLOYED"]), "dashboardStatus"):
+    if s.get("name") in names:
+        print("%s %s" % (s["channelId"], s["name"]))
+PY
+)"
+    if [[ -z "$ids" ]]; then
+        printf '    no deployed channel uses it\n'
+        return 0
+    fi
+    while read -r id name; do
+        _oie_build_args
+        curl "${oie_curl_args[@]}" --fail --request POST --output /dev/null \
+            "${OIE_URL}/channels/${id}/_deploy?returnErrors=true"
+        printf '    redeployed channel %s to %s\n' "$name" "$what"
+    done <<<"$ids"
 }
 
 action="${1:-}"
@@ -160,40 +200,8 @@ if out.get("ignored"):
 open(sys.argv[2], "w").write(out["result"])
 PY
 
-    # A deployed listener keeps presenting the key pair it was deployed with, so a
-    # renewal reaches clients only once the channels presenting it redeploy. TLS
-    # Manager knows those channels by name; only the ones deployed now are
-    # redeployed, so a stopped channel stays stopped.
     [[ "$(cat "$result")" == updated ]] || exit 0
-    in_use="$(tls_get /localCertificates)"
-    _oie_build_args
-    deployed="$(curl "${oie_curl_args[@]}" --fail "${OIE_URL}/channels/statuses")"
-    ids="$(ALIAS="$alias" IN_USE="$in_use" DEPLOYED="$deployed" python3 - <<'PY'
-import json, os
-def items(node, key):
-    v = ((node or {}).get("list") or {}).get(key) or []
-    return v if isinstance(v, list) else [v]
-alias = os.environ["ALIAS"].lower()  # PKCS#12 lowercases aliases
-names = set()
-for c in items(json.loads(os.environ["IN_USE"]), "localCertificate"):
-    if (c.get("alias") or "").lower() == alias:
-        used = (c.get("channelsInUse") or {}).get("string") or []
-        names.update(used if isinstance(used, list) else [used])
-for s in items(json.loads(os.environ["DEPLOYED"]), "dashboardStatus"):
-    if s.get("name") in names:
-        print("%s %s" % (s["channelId"], s["name"]))
-PY
-)"
-    if [[ -z "$ids" ]]; then
-        printf '    no deployed channel presents it\n'
-        exit 0
-    fi
-    while read -r id name; do
-        _oie_build_args
-        curl "${oie_curl_args[@]}" --fail --request POST --output /dev/null \
-            "${OIE_URL}/channels/${id}/_deploy?returnErrors=true"
-        printf '    redeployed channel %s to present it\n' "$name"
-    done <<<"$ids"
+    redeploy_users /localCertificates localCertificate "$alias" "present it"
     ;;
 
 trust)
@@ -202,20 +210,41 @@ trust)
 
     current="$(tls_get /trustedCertificates)"
     tmp="$(mktemp)"; oie_cleanup_add "$tmp"
-    ALIAS="$alias" CERT_FILE="$cert" CURRENT="$current" python3 - "$tmp" <<'PY'
-import json,os,sys
+    result="$(ALIAS="$alias" CERT_FILE="$cert" CURRENT="$current" python3 - "$tmp" <<'PY'
+import json, os, re, sys
+def body(pem):
+    # The base64 of the first certificate, whitespace aside: TLS Manager hands
+    # back its own PEM formatting, so the text itself does not compare.
+    m = re.search(r"-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----", pem or "", re.S)
+    return re.sub(r"\s+", "", m.group(1)) if m else None
+pem = open(os.environ["CERT_FILE"]).read()
+if body(pem) is None:
+    sys.exit("no certificate in %s" % os.environ["CERT_FILE"])
+if pem.count("BEGIN CERTIFICATE") > 1:
+    sys.exit("%s holds more than one certificate: trust each under its own alias"
+             % os.environ["CERT_FILE"])
 cur = json.loads(os.environ["CURRENT"] or "{}").get("list") or {}
 items = cur.get("trustedCertificate") or []
 items = items if isinstance(items, list) else [items]
 alias = os.environ["ALIAS"]
-entry = {"alias": alias, "certificate": open(os.environ["CERT_FILE"]).read()}
-items = [i for i in items if i.get("alias") != alias] + [entry]
+same = [i for i in items if (i.get("alias") or "").lower() == alias.lower()]
+if same and body(same[0].get("certificate")) == body(pem):
+    print("unchanged")
+    sys.exit(0)
+items = [i for i in items if (i.get("alias") or "").lower() != alias.lower()]
+items.append({"alias": alias, "certificate": pem})
 with open(sys.argv[1], "w") as fh:
     # The shape the GET returns; a bare array is refused with a 500.
     json.dump({"list": {"trustedCertificate": items}}, fh)
+print("updated" if same else "added")
 PY
-    tls_put /trustedCertificates "$tmp"
-    printf 'imported trusted certificate as alias %s\n' "$alias"
+)"
+    if [[ "$result" != unchanged ]]; then
+        tls_put /trustedCertificates "$tmp"
+    fi
+    subject="$(openssl x509 -in "$cert" -noout -subject 2>/dev/null | sed 's/^subject=//')" || subject=""
+    printf 'trusted certificate %s %s%s\n' "$alias" "$result" "${subject:+: ${subject}}"
+    [[ "$result" == unchanged ]] || redeploy_users /trustedCertificates trustedCertificate "$alias" "trust it"
     ;;
 
 *)

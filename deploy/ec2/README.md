@@ -273,6 +273,13 @@ renewed certificate updates it, the deploy also redeploys the channels that are
 deployed and present it, since a running listener keeps the certificate it
 started with; stopped channels are left stopped.
 
+Each deploy also adds every CA certificate in `config/tls/trusted/` to TLS
+Manager's **trusted certificates**, under its file name: the HTrak Root CA as
+`htrak-root-ca`. A listener accepts the client certificates it issues once
+that alias is ticked under Trusted server certificates and OCSP checking is
+Disabled (see `config/tls/trusted/README.md`). Unchanged certificates are left
+alone; a changed one redeploys the running channels that trust it.
+
 This goes through Certificate Generator (`/api/certgen/import`, 0.3.0 or later,
 one of the built-in plugins) rather than TLS Manager's own API, which keeps only
 the first certificate of a chain and strips the chains of every other key pair

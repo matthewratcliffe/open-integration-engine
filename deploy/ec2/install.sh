@@ -928,6 +928,17 @@ if [[ -s "$TLS_DIR/cert.pem" && -s "$TLS_DIR/key.pem" ]]; then
         "$TLS_DIR/cert.pem" "$TLS_DIR/key.pem"
 fi
 
+# The CAs in config/tls/trusted -- the HTrak Root CA, which signs the partners'
+# client certificates -- as TLS Manager trusted certificates, each under its file
+# name, so a TLS listener can be set to accept the clients they issue. Added or
+# updated in place, unchanged ones left alone; one that changes redeploys the
+# running channels that trust it.
+for pem in "$HERE"/tls-trusted/*.pem; do
+    [[ -e "$pem" ]] || continue
+    OIE_URL="https://127.0.0.1:${ENGINE_PORT}/api" OIE_INSECURE=true OIE_PASSWORD="$OIE_ADMIN_PASSWORD" \
+        "$SCRIPTS_DIR/oie-tls-import.sh" trust "$(basename "$pem" .pem)" "$pem"
+done
+
 if [[ "$HTTPS_PORT" == 443 ]]; then
     log "done: https://<this host>/ (user admin)"
 else

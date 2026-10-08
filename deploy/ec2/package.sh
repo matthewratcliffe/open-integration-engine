@@ -101,6 +101,9 @@ cp "${ROOT}/deploy/ec2/oie-gate.py" "$bundle/oie-gate.py"
 cp "${ROOT}/docker/entrypoint.sh" "$bundle/entrypoint.sh"
 cp "${ROOT}"/scripts/*.sh "$bundle/scripts/"
 cp -R "${ROOT}/scripts/default-alert" "$bundle/scripts/default-alert"
+# CA certificates TLS Manager trusts, one per file; install.sh imports each.
+mkdir -p "$bundle/tls-trusted"
+find "${ROOT}/config/tls/trusted" -maxdepth 1 -type f -name '*.pem' -exec cp {} "$bundle/tls-trusted/" \; 2>/dev/null || true
 find "${ROOT}/extensions" -mindepth 1 -maxdepth 1 ! -name README.md -exec cp -R {} "$bundle/extensions/" \;
 chmod 0755 "$bundle/install.sh" "$bundle/entrypoint.sh" "$bundle"/scripts/*.sh
 

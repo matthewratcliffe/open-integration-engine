@@ -88,8 +88,20 @@ TLS tab because TLS means nothing there.
 | Client auth mode | **Required** (`Requested` accepts anonymous callers too) |
 | Trusted server certificates | the client CA alias |
 | Trust system truststore | off, unless clients chain to a public root |
-| CRL / OCSP mode | `Hard Fail` is the default and the right one |
+| CRL / OCSP mode | `Hard Fail`, the default, for clients from a public CA. For a private CA with no revocation service -- the HTrak Root CA -- CRL `Soft Fail` and OCSP **`Disabled`** (below) |
 | Subject DN validation | `Exact` or `Partial` + filter, to pin *which* client |
+
+**Revocation with a private CA.** The HTrak Root CA, and the Certificate
+Generator that issues from it, publish no CRL and run no OCSP responder, so
+their certificates name neither. TLS Manager 1.0.8 then rejects every such
+client certificate unless OCSP checking is **Disabled** -- `Soft Fail` does not
+help, the handshake still fails with "Certificate does not specify OCSP
+responder" in `mirth.log` and `certificate unknown` at the client. CRL checking
+can stay on `Soft Fail`. The chain is still validated against the trusted
+certificates either way: a certificate from any other CA is refused. What is
+lost is revoking a single certificate, which this CA cannot do anyway; pin the
+client with Subject DN validation, and to cut one off, issue the partner a new
+certificate and change the pin.
 
 Client auth mode is the switch that makes it mutual TLS rather than plain
 HTTPS. `Required` rejects the handshake without a valid client certificate;
