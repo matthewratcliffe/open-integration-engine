@@ -712,6 +712,12 @@ OIE_URL="https://127.0.0.1:${ENGINE_PORT}/api" OIE_INSECURE=true \
     OIE_ADMIN_PASSWORD="$OIE_ADMIN_PASSWORD" OIE_WAIT_TIMEOUT="${OIE_WAIT_TIMEOUT:-600}" \
     "$SCRIPTS_DIR/oie-bootstrap-admin.sh"
 
+# Git Sync from GIT_SYNC_* (scripts/oie-gitsync-configure.sh): the ones set are
+# applied on every deploy, the rest stay as the console has them. They reach it
+# from SSM through this environment and are never written to oie.env.
+OIE_URL="https://127.0.0.1:${ENGINE_PORT}/api" OIE_INSECURE=true OIE_PASSWORD="$OIE_ADMIN_PASSWORD" \
+    "$SCRIPTS_DIR/oie-gitsync-configure.sh"
+
 if [[ "$HTTPS_PORT" == 443 ]]; then
     log "done: https://<this host>/ (user admin)"
 else

@@ -131,6 +131,35 @@ of `OIE_OIDC_*` overrides rewritten on every deploy, so a variable removed in
 GitLab is removed from the engine too. While it pins anything, it owns those
 `OIE_OIDC_*` names, and a hand-set parameter for one of them is ignored.
 
+### Git Sync
+
+The Git Sync extension's settings (Settings > Git Sync) can come from GitLab
+too. After the admin bootstrap, the installer runs
+`scripts/oie-gitsync-configure.sh`, which sends the ones set to the
+extension's settings API. One not set stays as the console has it; one set is
+applied on every deploy, so a console edit of it lasts until the next one.
+
+| Variable | |
+| --- | --- |
+| `GIT_SYNC_REMOTE_URL` | the configuration repository, `https://...` or `git@host:group/repo.git` |
+| `GIT_SYNC_BRANCH` | branch to follow; the extension's default is `main` |
+| `GIT_SYNC_AUTH_TYPE` | `none`, `https_token` or `ssh_key` |
+| `GIT_SYNC_USERNAME` | HTTPS username; for a GitLab token, anything non-empty such as `oauth2` |
+| `GIT_SYNC_SECRET` | the token, or the SSH private key (multi-line; mask it). Stored encrypted by the extension and never returned; not set keeps the stored one |
+| `GIT_SYNC_MODE` | `read_only` (the default: pull only) or `read_write` |
+| `GIT_SYNC_SUBDIRECTORY` | path in the repository for this engine, when one repository holds several |
+| `GIT_SYNC_AUTHOR_NAME`, `GIT_SYNC_AUTHOR_EMAIL` | who commits from this engine |
+| `GIT_SYNC_PULL_INTERVAL_SECONDS` | scheduled pull; `0` turns it off |
+| `GIT_SYNC_SCOPE` | comma-separated: `channels`, `code-templates`, `channel-groups`, `configuration-map`, `alerts`, `global-scripts`, `server-settings`, `administrator-settings`, `channel-tags`, `resources`, `data-pruner`, `volume-monitor`. Empty is the extension's default set |
+| `GIT_SYNC_KNOWN_HOSTS` | `known_hosts` lines for an SSH remote; without them host keys are not checked |
+
+An unrecognised auth type, mode or interval fails the deploy before anything
+is sent, as does the extension refusing the settings or not being installed. A
+field it cannot use (it keeps the old value) and a remote it cannot reach yet
+only warn, with the reason. The same
+script works against any engine:
+`OIE_URL=https://host/api OIE_PASSWORD=... GIT_SYNC_...=... ./scripts/oie-gitsync-configure.sh`.
+
 The engine release and plugin list are the ones `docker/Dockerfile` pins, at
 the commit being deployed.
 
