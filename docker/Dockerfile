@@ -47,7 +47,7 @@ sha256:b09211f20e65b3cfa6231d80782baef8e36891b67cffba3f27fc69a844a853a1@https://
 sha256:8792ca72faf3d802abd182e8ff62c8ffaf275f5c45e059c793b7ce43caf45d6f@https://github.com/matthewratcliffe/oie-sftp-connector/releases/download/v0.1.1/sftp-0.1.1.zip,\
 sha256:5177bae67b21115f9046481193eeb4fbac15445c87bdaaa4f60a7ff124d6ab59@https://github.com/matthewratcliffe/oie-random-generator/releases/download/v0.1.1/generator-0.1.1.zip,\
 sha256:44752bda42bea5d6ccace69f74cba446470c162a412be46b34a9f95d01d241db@https://github.com/matthewratcliffe/oie-node-monitor/releases/download/v0.1.1/nodemonitor-0.1.1.zip,\
-sha256:6daab20dbf30648ea5a38656eb6a522595764b22f1cf18807eb8a1f17914d463@https://github.com/matthewratcliffe/oie-key-store/releases/download/v0.1.1/keystore-0.1.1.zip,\
+sha256:591d63256486438347d7a508a87f8830a19b163725d3d71fed21369cfc0e0609@https://github.com/matthewratcliffe/oie-key-store/releases/download/v0.2.0/keystore-0.2.0.zip,\
 sha256:f5572923a55d842a9417aaa587a61dd180de5be730a866b32324b5c2f4a5a6d0@https://github.com/matthewratcliffe/oie-git-sync/releases/download/v0.2.0/gitsync-0.2.0.zip,\
 sha256:bd0802f87c57a9dd1dc75677607115360935e5267316b79c38dd022396722a03@https://github.com/matthewratcliffe/oie-fhir-connector/releases/download/v0.2.1/fhir-0.2.1.zip,\
 sha256:39bcbf226344e1397ce9285df048aee65c6630f2a0ba13457b7caa73a6f657b1@https://github.com/matthewratcliffe/oie-cluster/releases/download/v0.1.1/cluster-0.1.1.zip,\
