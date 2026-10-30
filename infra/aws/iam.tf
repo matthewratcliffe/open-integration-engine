@@ -14,9 +14,35 @@ resource "aws_iam_role" "execution" {
   tags               = local.tags
 }
 
-resource "aws_iam_role_policy_attachment" "execution" {
-  role       = aws_iam_role.execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+# ECS uses the execution role, not the task role, to pull the images and to ship the engine's and
+# the database initialiser's stdout and stderr through the awslogs driver. This policy replaces AWS's
+# managed AmazonECSTaskExecutionRolePolicy, which allows both on every repository and log group in
+# the account, with the shared image repository and this instance's log group (INFRA-1381).
+resource "aws_iam_role_policy" "execution" {
+  name = "ecs-execution"
+  role = aws_iam_role.execution.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # GetAuthorizationToken does not support resource-level permissions.
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
+        Resource = local.shared.ecr_repository_arn
+      },
+      {
+        # ":*" matches the log streams inside the group.
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "${aws_cloudwatch_log_group.oie.arn}:*"
+      }
+    ]
+  })
 }
 
 resource "aws_iam_role_policy" "secrets" {
