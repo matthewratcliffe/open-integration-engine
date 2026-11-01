@@ -119,7 +119,7 @@ resource "terraform_data" "database" {
   # secret access granted to the execution role.
   depends_on = [
     aws_vpc_security_group_ingress_rule.database,
-    aws_iam_role_policy_attachment.execution,
+    aws_iam_role_policy.execution,
     aws_iam_role_policy.secrets,
   ]
 }
