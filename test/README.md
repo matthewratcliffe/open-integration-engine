@@ -11,7 +11,7 @@ live in their own GitHub repos** (`gibson9583/oie-<name>`), each with its own
 test suite. They are fetched and baked into the engine image at build time via
 `OIE_BUILTIN_PLUGIN_URLS` (see `docker/Dockerfile`) rather than built here, so
 `js-unit` and `java-unit` below now only cover whatever is still tracked under
-`plugins/` or `extensions/` in this repo (currently the TLS Manager overlay).
+`plugins/` or `extensions/` in this repo (none at the moment).
 
 Six tiers, fast to slow. The first five need no Docker and finish in well under a
 minute; `integration` builds the engine image and runs last.

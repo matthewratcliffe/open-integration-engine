@@ -159,7 +159,7 @@ it in and ticks Enabled.
 The pinned set, as installed:
 
 ```bash
-OIE_EXTENSION_URLS=sha256:11014e5f...@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.0.3/websupport-1.0.3.zip,sha256:c8785113...@https://github.com/gibson9583/oie-sentinel/releases/download/v1.1.0/sentinel-1.1.0.zip,sha256:7597579a...@https://github.com/gibson9583/engine-thread-viewer/releases/download/v1.0.6/thread-viewer-1.0.6.zip,sha256:a78a0db7...@https://github.com/NovaMap-Health/tls-manager-plugin/releases/download/1.0.8/tls-manager-1.0.8.zip,sha256:a18d208c...@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.1/oidcauth-1.0.1.zip
+OIE_EXTENSION_URLS=sha256:11014e5f...@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.0.3/websupport-1.0.3.zip,sha256:c8785113...@https://github.com/gibson9583/oie-sentinel/releases/download/v1.1.0/sentinel-1.1.0.zip,sha256:7597579a...@https://github.com/gibson9583/engine-thread-viewer/releases/download/v1.0.6/thread-viewer-1.0.6.zip,sha256:98167124...@https://github.com/matthewratcliffe/oie-tls-manager/releases/download/1.1.2/tls-manager-1.1.2.zip,sha256:a18d208c...@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.1/oidcauth-1.0.1.zip
 ```
 
 The full hashes are in `.env`. Note where each came from: Web Support, Sentinel
@@ -230,119 +230,17 @@ inserts its own relative to its own, so a foreign node can drift. Both belong
 upstream in `oie-web-client` as extension points — a header slot and a user-page
 hook — and this is what they look like until then.
 
-### Putting TLS Manager in the console sidebar
+### TLS Manager in the console
 
-TLS Manager's certificate manager is a separate app at `/tls-manager/`, which
-means it is not in the sidebar and needs its own navigation. The console
-discovers a plugin UI from a `webadmin/plugin.json` inside an extension's
-directory; TLS Manager's zip has no `webadmin/` folder at all.
+TLS Manager is `matthewratcliffe/oie-tls-manager` (a fork of NovaMap Health's
+plugin), pinned at 1.1.2. Unlike upstream 1.0.x, its zip ships its own
+`webadmin/` folder, so the sidebar entry and the **TLS Settings** connector tab
+come from the extension itself. The old `extensions/webadmin-overlay/tls-manager`
+bridge in this repo has been removed; the entrypoint's overlay mechanism is
+still there for any extension that needs one.
 
-`extensions/webadmin-overlay/tls-manager/webadmin/` provides one: a manifest and
-a `web/plugin.js` that registers a nav item and a routed view embedding the
-existing app. The entrypoint copies any `webadmin-overlay/<extension>/` tree over
-that extension after unpacking the zips, on every boot, so it survives the
-`extensions/` reset:
+The engine must still permit same-origin framing for the embedded app:
+`compose.yaml` sets `_MP_SERVER_API_XFRAMEOPTIONS=SAMEORIGIN` and
+`_MP_SERVER_API_CONTENTSECURITYPOLICY=frame-ancestors 'self'`. Without them the
+panel is blank.
 
-```
-[entrypoint] applied overlay to extension 'tls-manager'
-```
-
-Two details make it work:
-
-- **`plugin.js` is hand-written plain ES module JavaScript** — no JSX, no
-  imports, no build step. The console dynamically `import()`s it and passes its
-  own `platform` into `register(platform)`, which is how the bundled plugins
-  receive it. Importing `@oie/web-shell` instead would depend on the page's
-  import map and risks a second framework instance registering into a dead
-  registry, which fails silently.
-- **The engine must permit same-origin framing.** `ClickjackingFilter` sends
-  `X-Frame-Options: DENY` and `frame-ancestors 'none'` on every WAR by default,
-  which leaves the panel blank. `compose.yaml` sets
-  `_MP_SERVER_API_XFRAMEOPTIONS=SAMEORIGIN` and
-  `_MP_SERVER_API_CONTENTSECURITYPOLICY=frame-ancestors 'self'`. That still
-  refuses framing by any other origin. Revert both (`API_XFRAME_OPTIONS=DENY`,
-  `API_CSP="frame-ancestors 'none'"`) if you would rather not, and the view
-  degrades to a message and an open-in-new-tab link rather than a blank panel.
-
-The embedded app shares the console's session — same origin, same cookie — so
-there is no second login. Its own fixed header is hidden by a small stylesheet
-injected into the frame, since a second logo and logout button inside a console
-panel is actively confusing (that logout signs you out of the inner app only).
-The rule targets library-level MUI classes, and if their markup changes it
-simply stops matching and the header comes back.
-
-**This is a bridge, not a port.** NovaMap's app already implements the whole
-certificate manager against `/api/tlsmanager`; reimplementing it as a native
-React console plugin would duplicate that work and drift from it. A native
-plugin is the better long-term answer and belongs upstream with them — their own
-README notes that the "overarching UI container into which new plugins could add
-their web UIs" was a question they parked, and the console is now that container.
-This exists so the sidebar works today.
-
-### A TLS Settings tab in the console
-
-The same overlay adds the other half TLS Manager is missing. Its connector UI is
-a Swing `ConnectorPropertiesPlugin`, so the web console had no **TLS Settings**
-tab on any connector — the settings existed but were only reachable from the
-desktop client.
-
-`web/plugin.js` registers a native panel through
-`platform.registerConnectorPropertiesPanel`, the same hook the bundled
-`httpauth` plugin uses. Verified registered in the console's own registry
-alongside it:
-
-```
-connectorPropertiesPanels() -> ["httpauth:Authentication", "tls-manager:TLS Settings"]
-```
-
-It attaches to exactly the six connectors the Swing plugin does — HTTP, TCP and
-Web Service, listener and sender — and edits
-`connector.properties.pluginProperties["org.openintegrationengine.tlsmanager.shared.properties.TLSConnectorProperties"]`,
-which is the same entry the Swing tab writes. So the two clients read each
-other's configuration, and `oie-config-pull` / `oie-config-push` carry it like
-any other channel property.
-
-The panel shows listener fields (server certificate, client auth mode) or sender
-fields (client certificate, hostname verification) depending on the connector,
-plus the shared truststore, Subject DN, CRL/OCSP and protocol settings.
-Certificate dropdowns are populated live from `/api/tlsmanager/localCertificates`
-and `/trustedCertificates`, and an alias a channel references but the store
-lacks is still shown and preserved rather than silently dropped.
-
-Two things it deliberately does not do: cipher-suite selection, which needs the
-JVM's own enumerated list and is better done in the Swing tab; and the
-connection tester. Both remain available there.
-
-`defaults()` mirrors the `TLSConnectorProperties()` constructor field for field.
-That matters more than it looks — a missing or misspelled field makes the engine
-store the entire channel as an `InvalidChannel` while reporting a successful
-save, which is the failure mode `oie-config-push.sh` exists to catch.
-
-See [`mtls.md`](mtls.md) for using it.
-
-### TLS Manager configuration
-
-It reads its own settings from the environment, defaulting to storing
-certificates in the **database**:
-
-| Variable | |
-| --- | --- |
-| `OIE_TLS_PLUGIN_PERSISTENCE_BACKEND` | `DATABASE` (default) or `FILESYSTEM` |
-| `OIE_TLS_PLUGIN_FS_KEYSTOREPATH` / `..._FS_KEYSTOREPASS` | filesystem mode only |
-| `OIE_TLS_PLUGIN_FS_TRUSTSTOREPATH` / `..._FS_TRUSTSTOREPASS` | filesystem mode only |
-| `OIE_TLS_PLUGIN_DISABLE_UI` | `true` skips deploying its WAR entirely |
-
-The database default is the right one for this stack: certificates then travel
-with your PostgreSQL backup rather than living in a container filesystem that
-gets rebuilt. If you switch to `FILESYSTEM`, the paths must point at a mounted
-volume or the material is lost on recreate.
-
-Unlike Web Support, TLS Manager **throws** if it cannot write its WAR, so a
-read-only or unwritable `webapps/` fails the plugin loudly rather than silently
-skipping the UI.
-
-Once any of these is in use, remember the CI consequence: the validate-stage
-engine needs the same extensions, or channels referencing their connectors come
-back as invalid channels. `.gitlab-ci.yml` passes `OIE_EXTENSION_URLS` through
-for that reason, and `OIE_REQUIRED_EXTENSIONS` should name them so a missing one
-fails the pipeline instead of the deploy.
