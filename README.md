@@ -255,7 +255,7 @@ installed as an extension:
 
 ```bash
 # .env -- checksum from the release's SHA256SUMS, and it is enforced
-OIE_EXTENSION_URLS=sha256:11014e5fc2a2b9ca5ef5c6750c42fc65ce832b3f7e918e076f5e1f9fa71fbf9a@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.0.3/websupport-1.0.3.zip
+OIE_EXTENSION_URLS=sha256:69a6b2285000d6c7356aaa547746528fe0bf145ba9bdf5d595fb9a390aff54ff@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.3.0/websupport-1.3.0.zip
 ```
 
 ```

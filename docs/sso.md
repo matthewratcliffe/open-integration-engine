@@ -41,7 +41,7 @@ Append its pinned entry to `OIE_EXTENSION_URLS` in `.env` — the same mechanism
 other community extension, and the checksum is enforced at boot:
 
 ```
-sha256:a18d208ca4e6ca0700790d971fde5b4212df70b3dc5b34ae3cc9032afdb3a5c2@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.1/oidcauth-1.0.1.zip
+sha256:92efb860967065f2b2d7ed89ccc014c9b9e4309d6d6e7e1d5f2369a295b0eb44@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.3/oidcauth-1.0.3.zip
 ```
 
 ```bash

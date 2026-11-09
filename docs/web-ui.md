@@ -52,7 +52,7 @@ Nothing binary in the repo, and the checksum is pinned:
 
 ```bash
 # .env
-OIE_EXTENSION_URLS=sha256:11014e5fc2a2b9ca5ef5c6750c42fc65ce832b3f7e918e076f5e1f9fa71fbf9a@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.0.3/websupport-1.0.3.zip
+OIE_EXTENSION_URLS=sha256:69a6b2285000d6c7356aaa547746528fe0bf145ba9bdf5d595fb9a390aff54ff@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.3.0/websupport-1.3.0.zip
 ```
 
 ```
@@ -159,7 +159,7 @@ it in and ticks Enabled.
 The pinned set, as installed:
 
 ```bash
-OIE_EXTENSION_URLS=sha256:11014e5f...@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.0.3/websupport-1.0.3.zip,sha256:c8785113...@https://github.com/gibson9583/oie-sentinel/releases/download/v1.1.0/sentinel-1.1.0.zip,sha256:7597579a...@https://github.com/gibson9583/engine-thread-viewer/releases/download/v1.0.6/thread-viewer-1.0.6.zip,sha256:c1fd7fe6...@https://github.com/matthewratcliffe/oie-tls-manager/releases/download/1.1.4/tls-manager-1.1.4.zip,sha256:a18d208c...@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.1/oidcauth-1.0.1.zip
+OIE_EXTENSION_URLS=sha256:11014e5f...@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.3.0/websupport-1.3.0.zip,sha256:c8785113...@https://github.com/gibson9583/oie-sentinel/releases/download/v1.2.2/sentinel-1.2.2.zip,sha256:7597579a...@https://github.com/gibson9583/engine-thread-viewer/releases/download/v1.0.8/thread-viewer-1.0.8.zip,sha256:c1fd7fe6...@https://github.com/matthewratcliffe/oie-tls-manager/releases/download/1.1.11/tls-manager-1.1.11.zip,sha256:a18d208c...@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.3/oidcauth-1.0.3.zip
 ```
 
 The full hashes are in `.env`. Note where each came from: Web Support, Sentinel
