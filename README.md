@@ -271,7 +271,7 @@ docker compose up -d
 | Web Support 1.0.3 | the console at `/oie-webadmin/` |
 | Sentinel 1.1.0 | channel monitoring, rendered inside the console |
 | Thread Viewer 1.0.6 | thread inspection, rendered inside the console |
-| TLS Manager 1.0.8 | its own app at `/tls-manager/` — an open-source alternative worth weighing against Zen |
+| TLS Manager 1.1.4 (fork) | its own app at `/tls-manager/` — an open-source alternative worth weighing against Zen |
 
 Every URL is checksum-pinned and the entrypoint refuses to start on a mismatch.
 These archives hold jars and WARs the engine loads into its own JVM, so treat an
@@ -287,7 +287,7 @@ The engine serves it from its own embedded Jetty: `MirthWebServer` scans
 `ServicePlugin.init()` on every boot, before that scan. The image creates
 `webapps/` and clears stale WARs each boot to match — see
 [`docs/web-ui.md`](docs/web-ui.md), which also covers `oie-sentinel`,
-`engine-thread-viewer` and the open-source `tls-manager-plugin`.
+`engine-thread-viewer` and the open-source `oie-tls-manager` fork of `tls-manager-plugin`.
 
 One thing to get right: **install it via `OIE_EXTENSION_URLS` or `extensions/`,
 not through the Administrator's Extensions → Install.** A UI install writes into

@@ -153,13 +153,13 @@ it in and ticks Enabled.
 | [`oie-web-support-plugin`](https://github.com/gibson9583/oie-web-support-plugin) | 1.0.3 | `4.6.0` | the web console at `/oie-webadmin/`, plus the APIs plugin UIs hang off |
 | [`oie-sentinel`](https://github.com/gibson9583/oie-sentinel) | 1.1.0 | `4.6.0` | channel monitoring and alerting — inactivity, low volume, anomaly, error rate, queue depth, channel state — with email/SNS/webhook delivery. UI embeds in the console, so it needs Web Support. MPL-2.0. |
 | [`engine-thread-viewer`](https://github.com/gibson9583/engine-thread-viewer) | 1.0.6 | `4.6.0` | thread inspection; UI embeds in the console |
-| [`tls-manager-plugin`](https://github.com/NovaMap-Health/tls-manager-plugin) | 1.0.8 | `4.5.2,4.6.0` | TLS connectors and certificate management, sponsored by NovaMap Health and Diridium and donated to the OIE initiative. Serves its **own** WAR at `/tls-manager/`. |
+| [`oie-tls-manager`](https://github.com/matthewratcliffe/oie-tls-manager) (fork of [NovaMap Health's `tls-manager-plugin`](https://github.com/NovaMap-Health/tls-manager-plugin)) | 1.1.4 | `4.5.2,4.6.0,4.7.0` | TLS connectors and certificate management, sponsored by NovaMap Health and Diridium and donated to the OIE initiative. Adds a **TLS Manager** tab under *Settings* and a **TLS Settings** connector panel in the console, and still serves its **own** WAR at `/tls-manager/`. The fork also handles certificates stored with a full chain. |
 | [`oie-oidc-auth`](https://github.com/gibson9583/oie-oidc-auth) | 1.0.1 | `4.6.0` | OpenID Connect sign-in, configured from *Settings → OIDC Authentication* in the console and stored in the database. Adds the login card's SSO button; local accounts are unaffected. See [`sso.md`](sso.md). |
 
 The pinned set, as installed:
 
 ```bash
-OIE_EXTENSION_URLS=sha256:11014e5f...@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.0.3/websupport-1.0.3.zip,sha256:c8785113...@https://github.com/gibson9583/oie-sentinel/releases/download/v1.1.0/sentinel-1.1.0.zip,sha256:7597579a...@https://github.com/gibson9583/engine-thread-viewer/releases/download/v1.0.6/thread-viewer-1.0.6.zip,sha256:98167124...@https://github.com/matthewratcliffe/oie-tls-manager/releases/download/1.1.2/tls-manager-1.1.2.zip,sha256:a18d208c...@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.1/oidcauth-1.0.1.zip
+OIE_EXTENSION_URLS=sha256:11014e5f...@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.0.3/websupport-1.0.3.zip,sha256:c8785113...@https://github.com/gibson9583/oie-sentinel/releases/download/v1.1.0/sentinel-1.1.0.zip,sha256:7597579a...@https://github.com/gibson9583/engine-thread-viewer/releases/download/v1.0.6/thread-viewer-1.0.6.zip,sha256:c1fd7fe6...@https://github.com/matthewratcliffe/oie-tls-manager/releases/download/1.1.4/tls-manager-1.1.4.zip,sha256:a18d208c...@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.1/oidcauth-1.0.1.zip
 ```
 
 The full hashes are in `.env`. Note where each came from: Web Support, Sentinel
@@ -233,14 +233,17 @@ hook — and this is what they look like until then.
 ### TLS Manager in the console
 
 TLS Manager is `matthewratcliffe/oie-tls-manager` (a fork of NovaMap Health's
-plugin), pinned at 1.1.2. Unlike upstream 1.0.x, its zip ships its own
-`webadmin/` folder, so the sidebar entry and the **TLS Settings** connector tab
-come from the extension itself. The old `extensions/webadmin-overlay/tls-manager`
-bridge in this repo has been removed; the entrypoint's overlay mechanism is
-still there for any extension that needs one.
+plugin), pinned at 1.1.4. Unlike upstream 1.0.x, its zip ships its own
+`webadmin/` folder, so the console UI comes from the extension itself:
 
-The engine must still permit same-origin framing for the embedded app:
-`compose.yaml` sets `_MP_SERVER_API_XFRAMEOPTIONS=SAMEORIGIN` and
-`_MP_SERVER_API_CONTENTSECURITYPOLICY=frame-ancestors 'self'`. Without them the
-panel is blank.
+- **Settings → TLS Manager** is the certificate manager. It is a tab under
+  *Settings*, not a sidebar entry.
+- **TLS Settings** appears on the HTTP, TCP and Web Service connectors.
 
+The standalone app is still at `/tls-manager/`. The old
+`extensions/webadmin-overlay/tls-manager` bridge, which added a sidebar entry
+that embedded that app, has been removed; the entrypoint's overlay mechanism is
+still there for any extension that needs one. `compose.yaml` still sets the
+same-origin framing headers (`_MP_SERVER_API_XFRAMEOPTIONS=SAMEORIGIN`) that the
+bridge needed. The native panel does not frame anything, so they can be reverted
+to `DENY` if you want the stricter default.

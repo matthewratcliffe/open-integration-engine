@@ -28,7 +28,7 @@ across environments and the same channel XML deploys everywhere.
 
 ### 1. Load the certificates
 
-In the console sidebar: **PLUGINS → TLS Manager** (or `/tls-manager/` directly).
+In the console: **Settings → TLS Manager** (or `/tls-manager/` directly).
 Three tabs:
 
 | Tab | What goes in it |
@@ -69,9 +69,8 @@ Note which client you are in:
 
 - **Swing Administrator** — TLS Manager ships its own tab here
   (`TLSConnectorPropertiesPlugin`, a Swing `ConnectorPropertiesPlugin`).
-- **Web console** — TLS Manager ships *no* console plugin, so there was no tab
-  at all. This repo adds one: see
-  [`web-ui.md`](web-ui.md#a-tls-settings-tab-in-the-console). It writes the same
+- **Web console** — the fork's own web admin adds a **TLS Settings** tab (see
+  [`web-ui.md`](web-ui.md#tls-manager-in-the-console)). It writes the same
   `TLSConnectorProperties` entry, so the two clients read each other's work and
   channel XML round-trips either way.
 
@@ -93,7 +92,7 @@ TLS tab because TLS means nothing there.
 
 **Revocation with a private CA.** The HTrak Root CA, and the Certificate
 Generator that issues from it, publish no CRL and run no OCSP responder, so
-their certificates name neither. TLS Manager 1.0.8 then rejects every such
+their certificates name neither. TLS Manager then rejects every such
 client certificate unless OCSP checking is **Disabled** -- `Soft Fail` does not
 help, the handshake still fails with "Certificate does not specify OCSP
 responder" in `mirth.log` and `certificate unknown` at the client. CRL checking
