@@ -159,7 +159,7 @@ it in and ticks Enabled.
 The pinned set, as installed:
 
 ```bash
-OIE_EXTENSION_URLS=sha256:11014e5f...@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.3.0/websupport-1.3.0.zip,sha256:c8785113...@https://github.com/gibson9583/oie-sentinel/releases/download/v1.2.2/sentinel-1.2.2.zip,sha256:7597579a...@https://github.com/gibson9583/engine-thread-viewer/releases/download/v1.0.8/thread-viewer-1.0.8.zip,sha256:019e4972122ce1f7a2d08c8589d7e4cbef265d870560ac8a4d46db7e46f99000@$11.1.12/tls-manager-1.1.12.zip,sha256:a18d208c...@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.3/oidcauth-1.0.3.zip
+OIE_EXTENSION_URLS=sha256:11014e5f...@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.3.0/websupport-1.3.0.zip,sha256:c8785113...@https://github.com/gibson9583/oie-sentinel/releases/download/v1.2.2/sentinel-1.2.2.zip,sha256:7597579a...@https://github.com/gibson9583/engine-thread-viewer/releases/download/v1.0.8/thread-viewer-1.0.8.zip,sha256:019e4972...@https://github.com/matthewratcliffe/oie-tls-manager/releases/download/1.1.12/tls-manager-1.1.12.zip,sha256:a18d208c...@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.3/oidcauth-1.0.3.zip
 ```
 
 The full hashes are in `.env`. Note where each came from: Web Support, Sentinel
