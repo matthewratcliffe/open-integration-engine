@@ -112,11 +112,11 @@ variable "extension_urls" {
   description = "Community extensions installed at engine start (OIE_EXTENSION_URLS), each pinned as sha256:<hex>@<url> - they run inside the engine's JVM. The same list as .env and deploy/k8s/config.yaml; keep them in step when bumping a version. Web Support serves the console at /oie-webadmin/, which is a 404 without it. CI replaces the whole list when OIE_EXTENSION_URLS is set."
   type        = list(string)
   default = [
-    "sha256:11014e5fc2a2b9ca5ef5c6750c42fc65ce832b3f7e918e076f5e1f9fa71fbf9a@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.0.3/websupport-1.0.3.zip",
-    "sha256:c878511360f7efbd1db3757c8a8f46438dff03e4ca700d5f049fb21dc65c90e9@https://github.com/gibson9583/oie-sentinel/releases/download/v1.1.0/sentinel-1.1.0.zip",
-    "sha256:7597579a6cbe54070ba9b64c1ee3caaef6433e04997cc16cd4d2c13ebc9201da@https://github.com/gibson9583/engine-thread-viewer/releases/download/v1.0.6/thread-viewer-1.0.6.zip",
-    "sha256:c1fd7fe62eaf43987a6169947566d8c2f9cc2eadf2fb5bf666bc002260c2ced8@https://github.com/matthewratcliffe/oie-tls-manager/releases/download/1.1.4/tls-manager-1.1.4.zip",
-    "sha256:a18d208ca4e6ca0700790d971fde5b4212df70b3dc5b34ae3cc9032afdb3a5c2@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.1/oidcauth-1.0.1.zip",
+    "sha256:69a6b2285000d6c7356aaa547746528fe0bf145ba9bdf5d595fb9a390aff54ff@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.3.0/websupport-1.3.0.zip",
+    "sha256:4ac72f14650be5fcf2d1ea91b4abaa5ea81344982a5e0036bb1e168e71152480@https://github.com/gibson9583/oie-sentinel/releases/download/v1.2.2/sentinel-1.2.2.zip",
+    "sha256:2e8b446e765c3b90157aac0d560389309c8d2c37ca2bf9615e600d5b5e8816eb@https://github.com/gibson9583/engine-thread-viewer/releases/download/v1.0.8/thread-viewer-1.0.8.zip",
+    "sha256:019e4972122ce1f7a2d08c8589d7e4cbef265d870560ac8a4d46db7e46f99000@$11.1.12/tls-manager-1.1.12.zip",
+    "sha256:92efb860967065f2b2d7ed89ccc014c9b9e4309d6d6e7e1d5f2369a295b0eb44@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.3/oidcauth-1.0.3.zip",
   ]
 }
 
