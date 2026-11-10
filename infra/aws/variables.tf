@@ -115,7 +115,7 @@ variable "extension_urls" {
     "sha256:69a6b2285000d6c7356aaa547746528fe0bf145ba9bdf5d595fb9a390aff54ff@https://github.com/gibson9583/oie-web-support-plugin/releases/download/v1.3.0/websupport-1.3.0.zip",
     "sha256:4ac72f14650be5fcf2d1ea91b4abaa5ea81344982a5e0036bb1e168e71152480@https://github.com/gibson9583/oie-sentinel/releases/download/v1.2.2/sentinel-1.2.2.zip",
     "sha256:2e8b446e765c3b90157aac0d560389309c8d2c37ca2bf9615e600d5b5e8816eb@https://github.com/gibson9583/engine-thread-viewer/releases/download/v1.0.8/thread-viewer-1.0.8.zip",
-    "sha256:38e9bc9a350061e7492952cc03e3a0bff6b5d55d022b9714aa538add01b7128a@https://github.com/matthewratcliffe/oie-tls-manager/releases/download/1.1.11/tls-manager-1.1.11.zip",
+    "sha256:019e4972122ce1f7a2d08c8589d7e4cbef265d870560ac8a4d46db7e46f99000@$11.1.12/tls-manager-1.1.12.zip",
     "sha256:92efb860967065f2b2d7ed89ccc014c9b9e4309d6d6e7e1d5f2369a295b0eb44@https://github.com/gibson9583/oie-oidc-auth/releases/download/v1.0.3/oidcauth-1.0.3.zip",
   ]
 }
