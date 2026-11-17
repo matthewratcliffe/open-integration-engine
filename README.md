@@ -414,7 +414,7 @@ in `docker/Dockerfile`) rather than built from source in this repo:
 
 | | |
 | --- | --- |
-| **SFTP Listener** | *push*: the engine runs an SFTP server (default `:2222`) that partners upload into, with per-account passwords and public keys, and dispatches a message as each upload completes. *pull*: polls a remote server on the standard polling schedule. |
+| **SFTP Listener** | *push*: the engine runs an SFTP server (default `:2222`) that partners upload into, with per-account passwords and public keys (either, or optionally both), and dispatches a message as each upload completes. *pull*: polls a remote server on the standard polling schedule. |
 | **SFTP Sender** | writes each message to a remote server, through a temporary name renamed on completion |
 
 The built-in File Reader and File Writer already speak SFTP as a client, so the
