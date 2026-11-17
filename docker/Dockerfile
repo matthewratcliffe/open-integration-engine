@@ -44,7 +44,7 @@ ARG OIE_BUILTIN_PLUGIN_URLS="sha256:ec850661df0512cef4591d9439a321c2be2d8e80c22f
 sha256:b2c2402d8475591effb354134e1e8fc4528ee9c2105c124de5d77e1338207e6e@https://github.com/matthewratcliffe/oie-volume-monitor/releases/download/v0.1.1/volumemonitor-0.1.1.zip,\
 sha256:4cba922267521b6ee8bafd37a6265c50c111d356e9f4574b97b4e07178814c34@https://github.com/matthewratcliffe/oie-update-check/releases/download/v0.1.1/updatecheck-0.1.1.zip,\
 sha256:b09211f20e65b3cfa6231d80782baef8e36891b67cffba3f27fc69a844a853a1@https://github.com/matthewratcliffe/oie-sso-user-guard/releases/download/v0.1.1/ssouserguard-0.1.1.zip,\
-sha256:8792ca72faf3d802abd182e8ff62c8ffaf275f5c45e059c793b7ce43caf45d6f@https://github.com/matthewratcliffe/oie-sftp-connector/releases/download/v0.1.1/sftp-0.1.1.zip,\
+sha256:9d91671d24ab72395b73049f5a979f7bce049fa5424c722073079b3e07d45d49@https://github.com/matthewratcliffe/oie-sftp-connector/releases/download/v0.1.2/sftp-0.1.2.zip,\
 sha256:5177bae67b21115f9046481193eeb4fbac15445c87bdaaa4f60a7ff124d6ab59@https://github.com/matthewratcliffe/oie-random-generator/releases/download/v0.1.1/generator-0.1.1.zip,\
 sha256:44752bda42bea5d6ccace69f74cba446470c162a412be46b34a9f95d01d241db@https://github.com/matthewratcliffe/oie-node-monitor/releases/download/v0.1.1/nodemonitor-0.1.1.zip,\
 sha256:591d63256486438347d7a508a87f8830a19b163725d3d71fed21369cfc0e0609@https://github.com/matthewratcliffe/oie-key-store/releases/download/v0.2.0/keystore-0.2.0.zip,\
